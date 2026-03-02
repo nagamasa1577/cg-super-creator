@@ -2285,6 +2285,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         });
 
         document.getElementById('btn-obs').addEventListener('click', () => {
+            selectSuper(null); // ★ OBSモード切り替え時にすべての選択状態をクリアする
             document.body.classList.toggle('obs-mode');
             updateScale();
         });
@@ -2463,7 +2464,11 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             if (container) workspaceContainerObserver.observe(container);
 
             updateScale(); 
-            createSuper(initialData); 
+            
+            // ★ URLパラメータでOBSモードとして開かれた場合は、初期オブジェクトを選択しない
+            const isObsMode = document.body.classList.contains('obs-mode');
+            createSuper(initialData, isObsMode); 
+            
             saveHistory(); 
         });
 
