@@ -2167,6 +2167,9 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             ui.btnLive.textContent = data.showLive ? 'ON' : 'OFF'; ui.btnLive.className = `px-1 py-0.5 rounded text-[9px] bg-gray-700 ${data.showLive ? 'text-green-400' : 'text-gray-400'}`;
             ui.btnLiveTypes.forEach((btn, idx) => { if (data.liveType === idx + 1) { btn.classList.replace('bg-gray-700', 'bg-red-600'); btn.classList.replace('text-gray-300', 'text-white'); } else { btn.classList.replace('bg-red-600', 'bg-gray-700'); btn.classList.replace('text-white', 'text-gray-300'); } });
 
+            // ★ 追加：スタイルボタンの見た目（青色点灯）をデータに合わせて更新する処理
+            ui.btnStyles.forEach((btn, idx) => { if (data.styleType === idx + 1) { btn.classList.replace('bg-gray-700', 'bg-blue-600'); btn.classList.replace('text-gray-300', 'text-white'); } else { btn.classList.replace('bg-blue-600', 'bg-gray-700'); btn.classList.replace('text-white', 'text-gray-300'); } });
+
             for(let i=1; i<=4; i++) { ui.ops[i].value = data.matOpacities[i]; }
             
             renderCustomTextUI();
