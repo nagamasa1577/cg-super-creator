@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>サイドスーパー職人 - 一流CGデザイナーツール</title>
+    <title>サイドスーパー職人 - クラウド同期対応版</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- html2canvas -->
@@ -171,6 +171,10 @@
         body.obs-mode #workspace-container { padding: 0 !important; align-items: flex-start !important; justify-content: flex-start !important; background: transparent !important; }
         body.obs-mode #workspace { border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; overflow: hidden !important; }
         body.obs-mode, body.obs-mode .checkerboard { background: transparent !important; background-image: none !important; }
+        
+        /* ★ OBSモード時のクリック貫通処理 (スコアボード操作用) */
+        body.obs-mode #workspace-container, body.obs-mode #workspace-wrapper, body.obs-mode #workspace, body.obs-mode .super-drag-shield { pointer-events: none !important; }
+        body.obs-mode iframe { pointer-events: auto !important; }
 
         body.fullscreen-mode #sidebar { display: none !important; }
         body.fullscreen-mode #preset-area { display: none !important; }
@@ -230,7 +234,6 @@
             <p class="text-xs text-gray-300">作りたい番組のシチュエーションや雰囲気を入力してください。<br>最適なテキストとカラーリングをAIが提案・適用します。</p>
             <textarea id="ai-prompt-input" class="w-full h-24 bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm resize-none focus:border-purple-500 focus:outline-none" placeholder="例：春の高校野球 決勝戦の熱い結果速報。赤とゴールドを使って！"></textarea>
             
-            <!-- APIキー入力欄を追加 -->
             <div class="mt-1 bg-gray-900/50 p-2 rounded border border-gray-700">
                 <label class="text-[10px] text-gray-400 flex justify-between items-center mb-1">
                     <span>Gemini API Key (ブラウザに保存されます)</span>
@@ -269,6 +272,22 @@
         <button id="btn-ai-generate" class="w-full py-1 mb-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600 text-white text-[10px] font-bold rounded transition shadow-md flex justify-center items-center gap-1">
             ✨ AIでスーパーを自動生成
         </button>
+
+        <!-- ★ クラウド同期パネル -->
+        <div class="mb-1.5 p-1.5 bg-gray-800 rounded border border-blue-600 shadow-inner">
+            <div class="flex justify-between items-center mb-1">
+                <label class="text-[9px] text-blue-300 font-bold flex items-center gap-1">☁️ クラウド同期 (リモート送出)</label>
+                <span id="cloud-sync-badge" class="hidden px-1.5 py-0.5 rounded text-[8px] bg-blue-600 text-white font-bold">待機中</span>
+            </div>
+            <div class="flex items-center gap-1">
+                <input type="text" id="input-sync-room" class="flex-1 bg-gray-900 border border-gray-600 text-white text-[10px] p-1 rounded focus:border-blue-500 outline-none" placeholder="ルーム名 (例: room1)">
+                <button id="btn-start-sync" class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-bold rounded transition shadow">接続</button>
+            </div>
+            <div id="obs-url-container" class="hidden mt-1 pt-1 border-t border-gray-700">
+                <p class="text-[8px] text-gray-400 mb-0.5">OBS入力用URL (クリックでコピー)</p>
+                <input type="text" id="input-obs-url" class="w-full bg-gray-900 text-green-400 border border-green-800 text-[8px] p-1 rounded cursor-pointer" readonly title="クリックしてコピー">
+            </div>
+        </div>
         
         <div class="space-y-1 pb-4">
             <div class="flex items-center gap-2">
@@ -426,12 +445,68 @@
         </div>
     </div>
 
+    <script type="module">
+        // ★ Firebase関連モジュールの動的読み込みとグローバル展開用設定
+        window.firebaseDb = null;
+        window.firebaseModules = {};
+        window.firebaseAppId = typeof __app_id !== 'undefined' ? __app_id : 'cg-super-creator';
+
+        async function initFirebase() {
+            try {
+                const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+                const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                const { getFirestore, doc, setDoc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+
+                window.firebaseModules = { doc, setDoc, onSnapshot };
+
+                // Vercel等で公開してクラウド同期を使う場合は、ご自身のFirebaseプロジェクトの設定をここに書き換えてください。
+                // (Canvas上で実行している場合は自動で環境変数が読み込まれます)
+                const defaultFirebaseConfig = {
+                    apiKey: "YOUR_API_KEY",
+                    authDomain: "YOUR_PROJECT.firebaseapp.com",
+                    projectId: "YOUR_PROJECT",
+                    storageBucket: "YOUR_PROJECT.appspot.com",
+                    messagingSenderId: "YOUR_SENDER_ID",
+                    appId: "YOUR_APP_ID"
+                };
+                
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+
+                if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                    console.warn("Firebase設定が未登録のため、クラウド同期はオフラインになります。");
+                    return;
+                }
+
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                window.firebaseDb = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user && window.syncRoomId) {
+                        startSyncProcess();
+                    }
+                });
+            } catch (e) {
+                console.error("Firebase init error", e);
+            }
+        }
+        
+        // 起動時にFirebase初期化を呼び出す
+        initFirebase();
+    </script>
+
     <script>
         const apiKey = ""; // API key is injected by the environment
 
         let supers = [];
         let activeIds = []; 
-        let lastActiveIds = []; // ★追加：直前の選択状態を記憶
+        let lastActiveIds = []; 
         let superCounter = 0;
         let ctCounter = 0;
         let imgCounter = 0;
@@ -453,6 +528,12 @@
         
         let isMoving = true;
         let animProgress = 0;
+        
+        // ★ リモート同期用のグローバル変数
+        window.syncRoomId = new URLSearchParams(window.location.search).get('room') || '';
+        let isObsMode = document.body.classList.contains('obs-mode') || new URLSearchParams(window.location.search).get('obs') === 'true';
+        let lastTriggerTime = 0;
+        let syncTimeout;
 
         const defaultOpacities = {
             1: { 1: 20, 2: 35, 3: 50, 4: 70 },
@@ -501,6 +582,118 @@
             ops: [null, document.getElementById('op-1'), document.getElementById('op-2'), document.getElementById('op-3'), document.getElementById('op-4')],
             extUrl: document.getElementById('input-external-url') 
         };
+
+        // ★ クラウド同期のセットアップ処理
+        function startSyncProcess() {
+            if (!window.firebaseDb || !window.syncRoomId) return;
+            const { doc, onSnapshot } = window.firebaseModules;
+            const docRef = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'public', 'data', 'rooms', window.syncRoomId);
+
+            if (isObsMode) {
+                // OBS側: 受信専用モード
+                console.log("Receiver mode active for room:", window.syncRoomId);
+                onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data.supers) {
+                            supers = data.supers;
+                            activeIds = []; 
+                            renderAllSupers();
+                        }
+                        // アクション（アニメーション）の受信と実行
+                        if (data.actionTrigger && data.actionTrigger.timestamp > lastTriggerTime) {
+                            lastTriggerTime = data.actionTrigger.timestamp;
+                            data.actionTrigger.actions.forEach(act => {
+                                playInAction(act.id, act.type);
+                            });
+                        }
+                    }
+                }, (err) => console.error("Cloud sync read error:", err));
+            } else {
+                // 編集側: UI表示と初回送信
+                const badge = document.getElementById('cloud-sync-badge');
+                badge.classList.remove('hidden');
+                badge.textContent = "同期ON";
+                
+                const obsUrlContainer = document.getElementById('obs-url-container');
+                const obsUrlInput = document.getElementById('input-obs-url');
+                obsUrlContainer.classList.remove('hidden');
+                
+                const obsUrl = new URL(window.location.href);
+                obsUrl.searchParams.set('room', window.syncRoomId);
+                obsUrl.searchParams.set('obs', 'true');
+                obsUrlInput.value = obsUrl.toString();
+
+                obsUrlInput.onclick = () => {
+                    obsUrlInput.select();
+                    document.execCommand('copy');
+                    const originalText = obsUrlInput.value;
+                    obsUrlInput.value = "コピーしました！";
+                    setTimeout(() => obsUrlInput.value = originalText, 1000);
+                };
+                
+                syncToCloud();
+            }
+        }
+
+        // ★ クラウドへの送信処理（デバウンス付き）
+        async function syncToCloud(actionData = null) {
+            if (!window.firebaseDb || !window.syncRoomId || isObsMode) return;
+            const { doc, setDoc } = window.firebaseModules;
+            const docRef = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'public', 'data', 'rooms', window.syncRoomId);
+
+            // アクション（PLAY等）がある場合は即時送信
+            if (actionData) {
+                try {
+                    await setDoc(docRef, { supers, actionTrigger: actionData, updatedAt: Date.now() }, { merge: true });
+                    return;
+                } catch (e) { console.error(e); }
+            }
+
+            // 通常のデータ保存は0.5秒のデバウンス（連打防止）
+            clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(async () => {
+                const badge = document.getElementById('cloud-sync-badge');
+                if(badge) {
+                    badge.textContent = "送信中";
+                    badge.classList.replace('bg-blue-600', 'bg-green-600');
+                }
+                
+                try {
+                    await setDoc(docRef, { supers, updatedAt: Date.now() }, { merge: true });
+                    if(badge) {
+                        setTimeout(() => {
+                            badge.textContent = "同期済";
+                            badge.classList.replace('bg-green-600', 'bg-blue-600');
+                        }, 500);
+                    }
+                } catch (e) {
+                    console.error("Cloud sync write error:", e);
+                    if(badge) {
+                        badge.textContent = "エラー(容量超過等)";
+                        badge.classList.replace('bg-green-600', 'bg-red-600');
+                    }
+                }
+            }, 500);
+        }
+
+        // 接続ボタンの処理
+        document.getElementById('btn-start-sync').addEventListener('click', () => {
+            const roomName = document.getElementById('input-sync-room').value.trim();
+            if (!roomName) return alert('ルーム名を入力してください');
+            
+            const url = new URL(window.location.href);
+            url.searchParams.set('room', roomName);
+            window.history.pushState({}, '', url);
+            window.syncRoomId = roomName;
+            
+            if (!window.firebaseDb) {
+                alert("Firebaseが初期化されていません。Vercel等で利用する場合は設定を確認してください。");
+            } else {
+                startSyncProcess();
+            }
+        });
+
 
         let currentScale = 1;
         function updateScale() {
@@ -718,17 +911,14 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             }
         });
 
-        // 複数選択対応: アクティブなスーパーを取得 (代表1つ)
         function getActiveSuper() {
             return activeIds.length > 0 ? supers.find(s => s.id === activeIds[0]) : null;
         }
 
-        // 複数選択対応: アクティブなすべてのスーパーを取得
         function getActiveSupers() {
             return supers.filter(s => activeIds.includes(s.id));
         }
 
-        // ★追加：未選択時でもUIに表示するための仮想ターゲットを取得する関数
         function getDisplaySuper() {
             let data = getActiveSuper();
             if (!data) {
@@ -739,7 +929,6 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             return data;
         }
 
-        // ★追加：未選択時にサイドバーを操作した際、直前に操作していたオブジェクトを自動で再選択（復元）する関数
         function ensureSelection() {
             if (activeIds.length === 0) {
                 let targetIds = lastActiveIds.filter(id => supers.find(s => s.id === id));
@@ -1064,9 +1253,17 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         document.getElementById('btn-play-action').addEventListener('click', () => {
             ensureSelection();
             const activeSupers = getActiveSupers();
+            const actions = [];
             activeSupers.forEach(data => {
-                if(data.inAction > 0) playInAction(data.id, data.inAction);
+                if(data.inAction > 0) {
+                    playInAction(data.id, data.inAction);
+                    actions.push({ id: data.id, type: data.inAction });
+                }
             });
+            // ★ アクションをクラウドに送信して受信側でも再生させる
+            if (actions.length > 0) {
+                syncToCloud({ timestamp: Date.now(), actions: actions });
+            }
         });
 
         document.querySelectorAll('input[name="in-action"]').forEach(radio => {
@@ -1074,11 +1271,19 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
                 ensureSelection();
                 const val = parseInt(e.target.value);
                 const activeSupers = getActiveSupers();
+                const actions = [];
                 activeSupers.forEach(data => {
                     data.inAction = val;
-                    if (val > 0) playInAction(data.id, val);
+                    if (val > 0) {
+                        playInAction(data.id, val);
+                        actions.push({ id: data.id, type: val });
+                    }
                 });
-                saveHistory();
+                if (actions.length > 0) {
+                    syncToCloud({ timestamp: Date.now(), actions: actions }); // アクションも送信
+                } else {
+                    saveHistory(); // 通常の保存
+                }
             });
         });
 
@@ -1171,11 +1376,20 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
                     activeIds = []; 
                     renderAllSupers();
                     updateUIFromData();
-                    saveHistory();
-
+                    
+                    // プリセット切り替え時、設定されているアクションを自動再生＆同期
+                    const actions = [];
                     supers.forEach(data => {
-                        if (data.inAction > 0) playInAction(data.id, data.inAction);
+                        if (data.inAction > 0) {
+                            playInAction(data.id, data.inAction);
+                            actions.push({ id: data.id, type: data.inAction });
+                        }
                     });
+                    if (actions.length > 0) {
+                        syncToCloud({ timestamp: Date.now(), actions: actions });
+                    } else {
+                        saveHistory();
+                    }
                 }
             });
 
@@ -1264,6 +1478,9 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             
             historyList.push(JSON.stringify(state)); historyIndex++;
             if (historyList.length > 50) { historyList.shift(); historyIndex--; }
+            
+            // ★ 保存と同時にクラウドへ同期
+            syncToCloud();
         }
 
         function loadHistoryState() {
@@ -1301,6 +1518,9 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
                 }
             });
             updateUIFromData();
+            
+            // Undo/Redo時も同期する
+            syncToCloud();
         }
 
         function undo() { if (historyIndex > 0) { historyIndex--; loadHistoryState(); } }
@@ -2285,7 +2505,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         });
 
         document.getElementById('btn-obs').addEventListener('click', () => {
-            selectSuper(null); // ★ OBSモード切り替え時にすべての選択状態をクリアする
+            selectSuper(null); 
             document.body.classList.toggle('obs-mode');
             updateScale();
         });
@@ -2465,9 +2685,8 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
 
             updateScale(); 
             
-            // ★ URLパラメータでOBSモードとして開かれた場合は、初期オブジェクトを選択しない
-            const isObsMode = document.body.classList.contains('obs-mode');
-            createSuper(initialData, isObsMode); 
+            const isObsModeParam = document.body.classList.contains('obs-mode');
+            createSuper(initialData, isObsModeParam); 
             
             saveHistory(); 
         });
