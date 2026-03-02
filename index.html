@@ -431,6 +431,7 @@
 
         let supers = [];
         let activeIds = []; 
+        let lastActiveIds = []; // ★追加：直前の選択状態を記憶
         let superCounter = 0;
         let ctCounter = 0;
         let imgCounter = 0;
@@ -538,11 +539,7 @@
         
         window.addEventListener('resize', updateScale);
         
-        // --- ★ ここからResizeObserverの設定を追加 ---
         const workspaceContainerObserver = new ResizeObserver(() => {
-            // ResizeObserverのコールバック内で直接DOMを操作すると、
-            // 「ResizeObserver loop limit exceeded」という無害なエラーがコンソールに出ることがあるため、
-            // requestAnimationFrameで包むのがベストプラクティスです。
             requestAnimationFrame(() => {
                 updateScale();
             });
@@ -729,6 +726,40 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         // 複数選択対応: アクティブなすべてのスーパーを取得
         function getActiveSupers() {
             return supers.filter(s => activeIds.includes(s.id));
+        }
+
+        // ★追加：未選択時でもUIに表示するための仮想ターゲットを取得する関数
+        function getDisplaySuper() {
+            let data = getActiveSuper();
+            if (!data) {
+                const lastId = lastActiveIds.find(id => supers.find(s => s.id === id));
+                if (lastId) data = supers.find(s => s.id === lastId);
+                else if (supers.length > 0) data = supers[supers.length - 1];
+            }
+            return data;
+        }
+
+        // ★追加：未選択時にサイドバーを操作した際、直前に操作していたオブジェクトを自動で再選択（復元）する関数
+        function ensureSelection() {
+            if (activeIds.length === 0) {
+                let targetIds = lastActiveIds.filter(id => supers.find(s => s.id === id));
+                if (targetIds.length === 0 && supers.length > 0) {
+                    targetIds = [supers[supers.length - 1].id];
+                }
+                
+                if (targetIds.length > 0) {
+                    activeIds = [...targetIds];
+                    document.querySelectorAll('.super-item').forEach(el => {
+                        if (activeIds.includes(el.id)) {
+                            el.classList.add('active');
+                            el.style.zIndex = 50;
+                        } else {
+                            el.classList.remove('active');
+                            el.style.zIndex = 10;
+                        }
+                    });
+                }
+            }
         }
 
         function getOrSelectSuper() {
@@ -1031,6 +1062,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         }
 
         document.getElementById('btn-play-action').addEventListener('click', () => {
+            ensureSelection();
             const activeSupers = getActiveSupers();
             activeSupers.forEach(data => {
                 if(data.inAction > 0) playInAction(data.id, data.inAction);
@@ -1039,6 +1071,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
 
         document.querySelectorAll('input[name="in-action"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
+                ensureSelection();
                 const val = parseInt(e.target.value);
                 const activeSupers = getActiveSupers();
                 activeSupers.forEach(data => {
@@ -1192,6 +1225,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         }
 
         document.getElementById('btn-apply-url').addEventListener('click', () => {
+            ensureSelection();
             const url = document.getElementById('input-external-url').value;
             const activeSupers = getActiveSupers();
             if (activeSupers.length > 0) {
@@ -1862,7 +1896,17 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         });
 
         function updateUIFromData() {
-            const data = getActiveSuper(); if (!data) { document.getElementById('custom-text-editors').innerHTML = ''; document.getElementById('image-editors').innerHTML = ''; ui.extUrl.value = ''; return; }
+            const data = getDisplaySuper(); 
+            if (!data) { 
+                document.getElementById('custom-text-editors').innerHTML = ''; 
+                document.getElementById('image-editors').innerHTML = ''; 
+                ui.extUrl.value = ''; 
+                return; 
+            }
+            
+            if (activeIds.length > 0) {
+                lastActiveIds = [...activeIds];
+            }
             
             const btnSuper = document.getElementById('btn-mode-super');
             const btnFuta = document.getElementById('btn-mode-futa');
@@ -1910,7 +1954,10 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         }
 
         function renderCustomTextUI() {
-            const data = getActiveSuper(); const container = document.getElementById('custom-text-editors'); if (!data) return;
+            const data = getDisplaySuper(); 
+            const container = document.getElementById('custom-text-editors'); 
+            if (!data) { container.innerHTML = ''; return; }
+            
             container.innerHTML = data.customTexts.map(ct => `
                 <div class="bg-gray-700 p-1 rounded relative group ct-editor-card ${dragTargetId === ct.id ? 'border border-blue-400' : 'border border-transparent'} cursor-pointer" data-id="${ct.id}" title="右クリックでZ順変更">
                     <button class="absolute top-0 right-1 text-red-400 text-lg leading-none hidden group-hover:block btn-del-ct">&times;</button>
@@ -1926,12 +1973,15 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             container.querySelectorAll('.ct-editor-card').forEach(card => {
                 const id = card.dataset.id; const ct = data.customTexts.find(t => t.id === id);
                 const txtInput = card.querySelector('.input-ct-text'); const sizeInput = card.querySelector('.input-ct-size'); const colorInput = card.querySelector('.input-ct-color');
-                txtInput.addEventListener('input', (e) => { ct.text = e.target.value; updateSuperDOM(data.id); });
-                sizeInput.addEventListener('input', (e) => { ct.size = parseInt(e.target.value); updateSuperDOM(data.id); });
-                colorInput.addEventListener('input', (e) => { ct.color = e.target.value; updateSuperDOM(data.id); });
-                txtInput.addEventListener('change', saveHistory); sizeInput.addEventListener('change', saveHistory); colorInput.addEventListener('change', saveHistory);
+                txtInput.addEventListener('input', (e) => { ensureSelection(); ct.text = e.target.value; updateSuperDOM(data.id); });
+                sizeInput.addEventListener('input', (e) => { ensureSelection(); ct.size = parseInt(e.target.value); updateSuperDOM(data.id); });
+                colorInput.addEventListener('input', (e) => { ensureSelection(); ct.color = e.target.value; updateSuperDOM(data.id); });
+                txtInput.addEventListener('change', () => { ensureSelection(); saveHistory(); });
+                sizeInput.addEventListener('change', () => { ensureSelection(); saveHistory(); });
+                colorInput.addEventListener('change', () => { ensureSelection(); saveHistory(); });
                 
                 card.querySelector('.btn-del-ct').addEventListener('click', () => { 
+                    ensureSelection();
                     data.customTexts = data.customTexts.filter(t => t.id !== id); 
                     if(data.layersOrder) data.layersOrder = data.layersOrder.filter(k => k !== 'ct_' + id);
                     if(dragTargetId === id) dragTargetId = null; 
@@ -1941,7 +1991,10 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         }
 
         function renderImageUI() {
-            const data = getActiveSuper(); const container = document.getElementById('image-editors'); if (!data) return;
+            const data = getDisplaySuper(); 
+            const container = document.getElementById('image-editors'); 
+            if (!data) { container.innerHTML = ''; return; }
+            
             container.innerHTML = data.images.map(img => `
                 <div class="bg-gray-700 p-1 rounded relative group img-editor-card ${dragTargetId === img.id ? 'border border-blue-400' : 'border border-transparent'} cursor-pointer" data-id="${img.id}" title="右クリックでZ順変更">
                     <button class="absolute top-0 right-1 text-red-400 text-lg leading-none hidden group-hover:block btn-del-img">&times;</button>
@@ -1961,10 +2014,11 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             container.querySelectorAll('.img-editor-card').forEach(card => {
                 const id = card.dataset.id; const img = data.images.find(i => i.id === id);
                 const opacityInput = card.querySelector('.input-img-opacity');
-                opacityInput.addEventListener('input', (e) => { img.opacity = parseInt(e.target.value); updateSuperDOM(data.id); });
-                opacityInput.addEventListener('change', saveHistory);
+                opacityInput.addEventListener('input', (e) => { ensureSelection(); img.opacity = parseInt(e.target.value); updateSuperDOM(data.id); });
+                opacityInput.addEventListener('change', () => { ensureSelection(); saveHistory(); });
                 
                 card.querySelector('.btn-del-img').addEventListener('click', () => { 
+                    ensureSelection();
                     data.images = data.images.filter(i => i.id !== id); 
                     if(data.layersOrder) data.layersOrder = data.layersOrder.filter(k => k !== 'image_' + id);
                     if(dragTargetId === id) dragTargetId = null; 
@@ -1974,6 +2028,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         }
 
         function handleUIChange() { 
+            ensureSelection();
             const activeSupers = getActiveSupers();
             if (activeSupers.length === 0) return; 
             
@@ -1994,11 +2049,13 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         ['input', 'change'].forEach(evt => { [ui.t1, ui.s1, ui.t2, ui.s2, ui.cMain, ui.cAcc1, ui.cAcc2, ui.cGrid, ui.cFutaBg].forEach(el => { el.addEventListener(evt, (e) => { handleUIChange(); if (e.type === 'change') saveHistory(); }); }); });
         
         ui.liveScale.addEventListener('input', (e) => { 
+            ensureSelection();
             getActiveSupers().forEach(data => { data.liveScale = parseFloat(e.target.value); updateSuperDOM(data.id); }); 
         });
-        ui.liveScale.addEventListener('change', saveHistory);
+        ui.liveScale.addEventListener('change', () => { ensureSelection(); saveHistory(); });
 
         document.getElementById('btn-mode-super').addEventListener('click', () => {
+            ensureSelection();
             const activeSupers = getActiveSupers();
             if (activeSupers.length === 0) return;
             
@@ -2035,6 +2092,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         });
 
         document.getElementById('btn-mode-futa').addEventListener('click', () => {
+            ensureSelection();
             const activeSupers = getActiveSupers();
             if (activeSupers.length === 0) return;
 
@@ -2071,10 +2129,11 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             updateUIFromData(); saveHistory();
         });
 
-        ui.btnStyles.forEach((btn, idx) => { btn.addEventListener('click', () => { getActiveSupers().forEach(data => { data.styleType = idx + 1; data.matOpacities = { ...defaultOpacities[idx + 1] }; updateSuperDOM(data.id); }); updateUIFromData(); saveHistory(); }); });
-        ui.btnLiveTypes.forEach((btn, idx) => { btn.addEventListener('click', () => { getActiveSupers().forEach(data => { data.liveType = idx + 1; updateSuperDOM(data.id); }); updateUIFromData(); saveHistory(); }); });
+        ui.btnStyles.forEach((btn, idx) => { btn.addEventListener('click', () => { ensureSelection(); getActiveSupers().forEach(data => { data.styleType = idx + 1; data.matOpacities = { ...defaultOpacities[idx + 1] }; updateSuperDOM(data.id); }); updateUIFromData(); saveHistory(); }); });
+        ui.btnLiveTypes.forEach((btn, idx) => { btn.addEventListener('click', () => { ensureSelection(); getActiveSupers().forEach(data => { data.liveType = idx + 1; updateSuperDOM(data.id); }); updateUIFromData(); saveHistory(); }); });
         
         ui.btnLive.addEventListener('click', () => { 
+            ensureSelection();
             const activeSupers = getActiveSupers(); if(activeSupers.length===0) return;
             const newState = !activeSupers[0].showLive;
             activeSupers.forEach(data => { data.showLive = newState; updateSuperDOM(data.id); });
@@ -2082,6 +2141,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         });
         
         ui.btnMat.addEventListener('click', () => { 
+            ensureSelection();
             const activeSupers = getActiveSupers(); if(activeSupers.length===0) return;
             const newState = !activeSupers[0].showMat;
             activeSupers.forEach(data => { data.showMat = newState; updateSuperDOM(data.id); });
@@ -2089,6 +2149,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         });
         
         ui.btnText1.addEventListener('click', () => {
+            ensureSelection();
             const activeSupers = getActiveSupers(); if(activeSupers.length===0) return;
             const newState = activeSupers[0].isFuta ? !activeSupers[0].futaShowText1 : !activeSupers[0].showText1;
             activeSupers.forEach(data => { 
@@ -2098,6 +2159,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             updateUIFromData(); saveHistory();
         });
         ui.btnText2.addEventListener('click', () => {
+            ensureSelection();
             const activeSupers = getActiveSupers(); if(activeSupers.length===0) return;
             const newState = activeSupers[0].isFuta ? !activeSupers[0].futaShowText2 : !activeSupers[0].showText2;
             activeSupers.forEach(data => { 
@@ -2107,14 +2169,15 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             updateUIFromData(); saveHistory();
         });
 
-        document.querySelectorAll('input[name="mat-edit"]').forEach(radio => { radio.addEventListener('change', () => { activeIds.forEach(id => updateSuperDOM(id)); }); });
+        document.querySelectorAll('input[name="mat-edit"]').forEach(radio => { radio.addEventListener('change', () => { ensureSelection(); activeIds.forEach(id => updateSuperDOM(id)); }); });
 
         for(let i=1; i<=4; i++) {
-            ui.ops[i].addEventListener('input', (e) => { getActiveSupers().forEach(data => { data.matOpacities[i] = parseInt(e.target.value); updateSuperDOM(data.id); }); });
-            ui.ops[i].addEventListener('change', saveHistory);
+            ui.ops[i].addEventListener('input', (e) => { ensureSelection(); getActiveSupers().forEach(data => { data.matOpacities[i] = parseInt(e.target.value); updateSuperDOM(data.id); }); });
+            ui.ops[i].addEventListener('change', () => { ensureSelection(); saveHistory(); });
         }
 
         document.getElementById('btn-add-text').addEventListener('click', () => {
+            ensureSelection();
             const data = getOrSelectSuper(); if(!data) return; ctCounter++; 
             const newId = 'ct_'+ctCounter;
             data.customTexts.push({ id: newId, text: '', size: 3, color: '#ffffff', x: 20, y: 20 });
@@ -2141,7 +2204,11 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
             }, 50); 
         });
 
-        document.getElementById('btn-add-image').addEventListener('click', () => document.getElementById('input-add-image').click());
+        document.getElementById('btn-add-image').addEventListener('click', () => {
+            ensureSelection();
+            document.getElementById('input-add-image').click();
+        });
+        
         document.getElementById('input-add-image').addEventListener('change', (e) => {
             const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
@@ -2172,6 +2239,7 @@ liveTypeは 1:標準, 2:フラット, 3:ネオン から選択。`;
         });
 
         document.getElementById('btn-duplicate').addEventListener('click', () => {
+            ensureSelection();
             const activeSupers = getActiveSupers(); 
             if(activeSupers.length === 0) { alert('複製元を選択してください'); return; }
             
