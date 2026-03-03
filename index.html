@@ -176,6 +176,13 @@
         body.obs-mode #workspace-container, body.obs-mode #workspace-wrapper, body.obs-mode #workspace, body.obs-mode .super-drag-shield { pointer-events: none !important; }
         body.obs-mode iframe { pointer-events: auto !important; }
 
+        /* ★ 追加：OBSモード時の「バラエティ」スタイル（すりガラス効果）の黒背景回避 */
+        body.obs-mode .style-2 .mat.layer4 {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            background: rgba(255, 255, 255, 0.85) !important; /* すりガラスの代わりに少し濃いめの半透明白にする */
+        }
+
         body.fullscreen-mode #sidebar { display: none !important; }
         body.fullscreen-mode #preset-area { display: none !important; }
         body.fullscreen-mode #main-content { width: 100vw !important; height: 100vh !important; }
