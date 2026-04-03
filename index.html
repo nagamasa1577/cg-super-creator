@@ -155,13 +155,11 @@
         body.obs-mode #sidebar { display: none !important; }
         body.obs-mode #preset-area { display: none !important; }
         body.obs-mode #main-content { width: 100vw !important; height: 100vh !important; background: transparent !important; }
-        /* ★OBSモードで背景を完全に透明化 */
         body.obs-mode #app-screen { background: transparent !important; }
         body.obs-mode #workspace-container { padding: 0 !important; align-items: flex-start !important; justify-content: flex-start !important; background: transparent !important; }
         body.obs-mode #workspace { border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; overflow: hidden !important; }
         body.obs-mode, body.obs-mode .checkerboard { background: transparent !important; background-image: none !important; }
-        
-        body.obs-mode #safety-guide { display: none !important; } /* ★ 追加: OBS時に赤枠を消す */
+        body.obs-mode #safety-guide { display: none !important; }
         
         body.obs-mode .style-2 .mat.layer4 { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: rgba(255, 255, 255, 0.85) !important; }
 
@@ -174,8 +172,7 @@
         body.fullscreen-mode #workspace-container { padding: 0 !important; align-items: center !important; justify-content: center !important; background: #00FF00 !important; }
         body.fullscreen-mode #workspace { border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; overflow: hidden !important; }
         body.fullscreen-mode, body.fullscreen-mode .checkerboard { background: #00FF00 !important; background-image: none !important; }
-        
-        body.fullscreen-mode #safety-guide { display: none !important; } /* ★ 追加: 全画面時に赤枠を消す */
+        body.fullscreen-mode #safety-guide { display: none !important; }
         
         #progress-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; }
     </style>
@@ -454,13 +451,29 @@
         </div>
     </div>
 
+    <script>
+        // ★XSS対策（無害化処理）
+        // 入力された文字列に含まれる危険な記号を、安全な文字に変換して画面表示でのプログラム実行を防ぎます。
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            return str.replace(/[&<>'"]/g, function(match) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[match];
+            });
+        }
+    </script>
+
     <script type="module">
         window.firebaseDb = null;
         window.firebaseAuth = null;
         window.firebaseModules = {};
         window.firebaseAppId = typeof __app_id !== 'undefined' ? __app_id : 'cg-super-creator';
 
-        // ★画面切り替え制御
         window.showScreen = function(screenId) {
             document.getElementById('loading-screen').classList.add('hidden');
             document.getElementById('login-screen').classList.add('hidden');
@@ -478,7 +491,6 @@
             }
         };
 
-        // ★テストアカウントの期限判定 (7日間)
         async function checkAccountStatus(user) {
             const { doc, getDoc, setDoc } = window.firebaseModules;
             const userRef = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'account', 'status');
@@ -498,12 +510,10 @@
             } catch (e) { return false; }
         }
 
-        // ★同時ログイン2台制限のチェック
         async function checkSessionLimit(user) {
             const { collection, getDocs, setDoc, doc, deleteDoc } = window.firebaseModules;
             const sessionsRef = collection(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions');
             
-            // タブ固有のセッションIDを取得（リロード時は維持される）
             let mySessionId = sessionStorage.getItem('cg_super_session_id');
             if (!mySessionId) {
                 mySessionId = 'sess_' + Date.now() + '_' + Math.floor(Math.random()*1000);
@@ -518,11 +528,10 @@
 
                 snap.forEach(d => {
                     const data = d.data();
-                    // 自分のセッションはカウントしない
                     if (d.id === mySessionId) return;
 
                     if (now - data.updatedAt > 15000) {
-                        cleanupPromises.push(deleteDoc(d.ref)); // 15秒以上更新がないものはゴミとして削除
+                        cleanupPromises.push(deleteDoc(d.ref));
                     } else {
                         activeCount++;
                     }
@@ -530,20 +539,18 @@
 
                 await Promise.all(cleanupPromises);
 
-                if (activeCount >= 2) return false; // 自分以外の有効セッションが2つ以上なら制限オーバー
+                if (activeCount >= 2) return false;
 
-                // 自分のセッションを登録
                 const myDoc = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions', mySessionId);
                 await setDoc(myDoc, { updatedAt: Date.now() });
 
-                // 定期更新（5秒ごと）
                 if (window.sessionUpdateInterval) clearInterval(window.sessionUpdateInterval);
                 window.sessionUpdateInterval = setInterval(async () => {
                     try { await setDoc(myDoc, { updatedAt: Date.now() }, { merge: true }); } catch(e){}
                 }, 5000);
 
                 return true;
-            } catch (e) { return true; } // エラー時は一応通す
+            } catch (e) { return true; }
         }
 
         async function initFirebase() {
@@ -590,7 +597,6 @@
                         const isAdmin = user.email === 'abctv1@abctv.com';
                         const isTest = user.email.includes('test') || user.email.includes('boysleague');
 
-                        // 1. テストアカウントの期限チェック
                         if (isTest && !isAdmin) {
                             const isAllowed = await checkAccountStatus(user);
                             if (!isAllowed) {
@@ -603,18 +609,15 @@
                             }
                         }
 
-                        // 2. 2台制限チェック (管理者は免除)
                         if (!isAdmin) {
                             const canLogin = await checkSessionLimit(user);
                             if (!canLogin) {
-                                // ログアウトはせず、このタブだけを専用のエラー画面で塞ぐ（他のタブを巻き込まない）
                                 window.history.replaceState({}, '', window.location.pathname);
                                 window.showScreen('limit-error-screen');
                                 return;
                             }
                         }
 
-                        // 3. ログイン成功処理：個室の完全ロック（URL強制書き換え）
                         const userId = user.email.split('@')[0];
                         document.getElementById('user-email-display').textContent = user.email;
                         
@@ -750,9 +753,7 @@
                 
                 obsUrlInput.onclick = () => { obsUrlInput.select(); document.execCommand('copy'); const originalText = obsUrlInput.value; obsUrlInput.value = "コピーしました！"; setTimeout(() => obsUrlInput.value = originalText, 1000); };
                 
-                // ★ 操作画面同士の連動（受信処理）を追加
                 onSnapshot(docRef, (docSnap) => {
-                    // 自分が送信したデータによる反応は無視する
                     if (docSnap.metadata.hasPendingWrites) return;
 
                     if (docSnap.exists()) {
@@ -762,7 +763,6 @@
                         if (data.supers) { supers = data.supers; needsUIUpdate = true; }
                         if (data.extSource) { extSource = data.extSource; needsUIUpdate = true; }
                         
-                        // プリセットの同期
                         if (data.presets) {
                             presets = data.presets;
                             presetNames = data.presetNames || new Array(27).fill(null);
@@ -776,7 +776,6 @@
                         if (needsUIUpdate) {
                             renderAllSupers();
                             updateExtSourceDOM();
-                            // 選択状態の維持
                             activeIds = activeIds.filter(id => supers.find(s => s.id === id) || id === 'ext-source');
                             document.querySelectorAll('.super-item').forEach(el => {
                                 if (activeIds.includes(el.id)) { el.classList.add('active'); el.style.zIndex = 50; }
@@ -803,7 +802,6 @@
                 const badge = document.getElementById('cloud-sync-badge');
                 if(badge) { badge.textContent = "送信中"; badge.classList.replace('bg-blue-600', 'bg-green-600'); }
                 try {
-                    // ★ プリセットデータも同期内容に含める
                     await setDoc(docRef, { supers, extSource, presets, presetNames, presetThumbs, updatedAt: Date.now() }, { merge: true });
                     if(badge) { setTimeout(() => { badge.textContent = "同期済"; badge.classList.replace('bg-green-600', 'bg-blue-600'); }, 500); }
                 } catch (e) {
@@ -964,12 +962,13 @@
             });
         });
 
+        // ★XSS対策適用
         function updatePresetDisplay(box, index) {
             if (!presets[index]) { box.querySelector('.preset-thumb-text').innerHTML = `<div class="text-[10px] text-gray-500 absolute top-1 left-1">P${parseInt(index) + 1}</div><div class="text-[13px] font-bold text-gray-500">- 未登録 -</div>`; return; }
             let t1 = ''; let t2 = '';
             if (presetThumbs && presetThumbs[index]) { t1 = presetThumbs[index].t1; t2 = presetThumbs[index].t2; } else { const targetSuper = presets[index].supers ? presets[index].supers[0] : (Array.isArray(presets[index]) ? presets[index][0] : null); t1 = targetSuper ? (targetSuper.isFuta ? targetSuper.futaText1 : targetSuper.text1) : ''; t2 = targetSuper ? (targetSuper.isFuta ? targetSuper.futaText2 : targetSuper.text2) : ''; }
             const customName = presetNames[index];
-            if (customName) { box.querySelector('.preset-thumb-text').innerHTML = `<div class="text-[10px] text-gray-400 absolute top-1 left-1">P${parseInt(index) + 1}</div><div class="text-sm font-bold text-blue-300 w-full text-center drop-shadow-md leading-tight mb-1 whitespace-pre-wrap break-words px-1">${customName}</div>`; } else { box.querySelector('.preset-thumb-text').innerHTML = `<div class="text-[10px] text-gray-400 absolute top-1 left-1">P${parseInt(index) + 1}</div><div class="text-sm font-bold text-white truncate w-full text-center drop-shadow-md leading-tight mb-1">${t1 || '空のテキスト'}</div><div class="text-xs text-gray-300 truncate w-full text-center">${t2 || ' '}</div>`; }
+            if (customName) { box.querySelector('.preset-thumb-text').innerHTML = `<div class="text-[10px] text-gray-400 absolute top-1 left-1">P${parseInt(index) + 1}</div><div class="text-sm font-bold text-blue-300 w-full text-center drop-shadow-md leading-tight mb-1 whitespace-pre-wrap break-words px-1">${escapeHTML(customName)}</div>`; } else { box.querySelector('.preset-thumb-text').innerHTML = `<div class="text-[10px] text-gray-400 absolute top-1 left-1">P${parseInt(index) + 1}</div><div class="text-sm font-bold text-white truncate w-full text-center drop-shadow-md leading-tight mb-1">${escapeHTML(t1) || '空のテキスト'}</div><div class="text-xs text-gray-300 truncate w-full text-center">${escapeHTML(t2) || ' '}</div>`; }
         }
 
         function initPresets() {
@@ -1003,12 +1002,13 @@
                 }
             });
 
+            // ★XSS対策適用
             grid.addEventListener('dblclick', (e) => {
                 const box = e.target.closest('.preset-box'); if (!box) return; const index = box.dataset.index;
                 if (!presets[index]) { alert('先にプリセットを登録してください。'); return; }
                 if (box.querySelector('.preset-name-input')) return;
                 const currentName = presetNames[index] || ''; const thumbContainer = box.querySelector('.preset-thumb-text');
-                thumbContainer.innerHTML = `<div class="text-[10px] text-gray-400 absolute top-1 left-1">P${parseInt(index) + 1}</div><input type="text" class="preset-name-input w-[90%] bg-gray-900 border border-blue-500 text-white text-xs p-1 rounded text-center shadow-lg" placeholder="名前を入力..." value="${currentName}">`;
+                thumbContainer.innerHTML = `<div class="text-[10px] text-gray-400 absolute top-1 left-1">P${parseInt(index) + 1}</div><input type="text" class="preset-name-input w-[90%] bg-gray-900 border border-blue-500 text-white text-xs p-1 rounded text-center shadow-lg" placeholder="名前を入力..." value="${escapeHTML(currentName)}">`;
                 const input = box.querySelector('.preset-name-input'); input.focus(); input.select();
                 const finishEdit = () => { const newName = input.value.trim() === '' ? null : input.value.trim(); if (presetNames[index] !== newName) { presetNames[index] = newName; updatePresetDisplay(box, index); saveHistory(); } else { updatePresetDisplay(box, index); } };
                 input.addEventListener('blur', finishEdit); input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
@@ -1093,6 +1093,7 @@
             });
         }
 
+        // ★XSS対策適用
         function updateSuperDOM(id) {
             const data = supers.find(s => s.id === id); const el = document.getElementById(id); if(!data || !el) return;
             el.style.left = data.x + 'px'; el.style.top = data.y + 'px'; el.style.width = data.w + 'px'; el.style.height = data.h + 'px';
@@ -1119,12 +1120,12 @@
 
             let mainTextLayer = flatContainer.querySelector('.layer-mainText'); if (!mainTextLayer) { mainTextLayer = document.createElement('div'); mainTextLayer.className = 'anim-layer layer-mainText'; flatContainer.appendChild(mainTextLayer); }
             const t1Size = 20 + (data.isFuta ? data.futaSize1 : data.size1) * 6; const t2Size = 20 + (data.isFuta ? data.futaSize2 : data.size2) * 6; const t1Text = data.isFuta ? data.futaText1 : data.text1; const t2Text = data.isFuta ? data.futaText2 : data.text2; const showT1 = data.isFuta ? data.futaShowText1 : data.showText1; const showT2 = data.isFuta ? data.futaShowText2 : data.showText2;
-            mainTextLayer.innerHTML = `<div class="content-area"><div class="text-line1 text-line" style="font-size: ${t1Size}px; display: ${showT1 ? 'block' : 'none'};">${t1Text}</div><div class="text-line2 text-line ${showT1 ? 'mt-2' : ''}" style="font-size: ${t2Size}px; display: ${showT2 ? 'block' : 'none'};">${t2Text}</div></div>`;
+            mainTextLayer.innerHTML = `<div class="content-area"><div class="text-line1 text-line" style="font-size: ${t1Size}px; display: ${showT1 ? 'block' : 'none'};">${escapeHTML(t1Text)}</div><div class="text-line2 text-line ${showT1 ? 'mt-2' : ''}" style="font-size: ${t2Size}px; display: ${showT2 ? 'block' : 'none'};">${escapeHTML(t2Text)}</div></div>`;
 
             data.customTexts.forEach(ct => {
                 let ctLayer = flatContainer.querySelector('.layer-ct_' + ct.id); if (!ctLayer) { ctLayer = document.createElement('div'); ctLayer.className = 'anim-layer layer-ct_' + ct.id; flatContainer.appendChild(ctLayer); }
                 const fs = 20 + ct.size * 6; const isActive = (dragType === 'ct' && dragTargetId === ct.id && activeIds.includes(id));
-                ctLayer.innerHTML = `<div class="custom-text-item text-line ${isActive ? 'active-ct' : ''}" data-ct-id="${ct.id}" style="left: ${ct.x}px; top: ${ct.y}px; font-size: ${fs}px; --ct-color: ${ct.color};">${ct.text}</div>`;
+                ctLayer.innerHTML = `<div class="custom-text-item text-line ${isActive ? 'active-ct' : ''}" data-ct-id="${ct.id}" style="left: ${ct.x}px; top: ${ct.y}px; font-size: ${fs}px; --ct-color: ${ct.color};">${escapeHTML(ct.text)}</div>`;
             });
             flatContainer.querySelectorAll('.anim-layer[class*="layer-ct_"]').forEach(node => { const ctIdMatch = node.className.match(/layer-ct_(ct_\d+)/); if (ctIdMatch && !data.customTexts.find(c => c.id === ctIdMatch[1])) node.remove(); });
 
@@ -1321,12 +1322,13 @@
             ui.btnStyles.forEach((btn, idx) => { if (data.styleType === idx + 1) { btn.classList.replace('bg-gray-700', 'bg-blue-600'); btn.classList.replace('text-gray-300', 'text-white'); } else { btn.classList.replace('bg-blue-600', 'bg-gray-700'); btn.classList.replace('text-white', 'text-gray-300'); } });
             for(let i=1; i<=4; i++) { ui.ops[i].value = data.matOpacities[i]; }
             
+            // ★XSS対策適用
             renderCustomTextUI(); renderImageUI();
         }
 
         function renderCustomTextUI() {
             const data = getDisplaySuper(); const container = document.getElementById('custom-text-editors'); if (!data) { container.innerHTML = ''; return; }
-            container.innerHTML = data.customTexts.map(ct => `<div class="bg-gray-700 p-1 rounded relative group ct-editor-card ${dragTargetId === ct.id ? 'border border-blue-400' : 'border border-transparent'} cursor-pointer" data-id="${ct.id}" title="右クリックでZ順変更"><button class="absolute top-0 right-1 text-red-400 text-lg leading-none hidden group-hover:block btn-del-ct">&times;</button><input type="text" class="w-[90%] bg-gray-900 text-white text-[10px] p-1 mb-1 rounded input-ct-text" value="${ct.text}" placeholder="追加テキスト"><div class="flex items-center gap-2 mt-1"><span class="text-[10px] text-gray-400">大</span><input type="range" class="flex-1 h-2 input-ct-size" min="1" max="10" value="${ct.size}"><input type="color" class="color-picker-ui input-ct-color" value="${ct.color}"></div></div>`).join('');
+            container.innerHTML = data.customTexts.map(ct => `<div class="bg-gray-700 p-1 rounded relative group ct-editor-card ${dragTargetId === ct.id ? 'border border-blue-400' : 'border border-transparent'} cursor-pointer" data-id="${ct.id}" title="右クリックでZ順変更"><button class="absolute top-0 right-1 text-red-400 text-lg leading-none hidden group-hover:block btn-del-ct">&times;</button><input type="text" class="w-[90%] bg-gray-900 text-white text-[10px] p-1 mb-1 rounded input-ct-text" value="${escapeHTML(ct.text)}" placeholder="追加テキスト"><div class="flex items-center gap-2 mt-1"><span class="text-[10px] text-gray-400">大</span><input type="range" class="flex-1 h-2 input-ct-size" min="1" max="10" value="${ct.size}"><input type="color" class="color-picker-ui input-ct-color" value="${ct.color}"></div></div>`).join('');
             container.querySelectorAll('.ct-editor-card').forEach(card => {
                 const id = card.dataset.id; const ct = data.customTexts.find(t => t.id === id); const txtInput = card.querySelector('.input-ct-text'); const sizeInput = card.querySelector('.input-ct-size'); const colorInput = card.querySelector('.input-ct-color');
                 txtInput.addEventListener('input', (e) => { ensureSelection(); ct.text = e.target.value; updateSuperDOM(data.id); }); sizeInput.addEventListener('input', (e) => { ensureSelection(); ct.size = parseInt(e.target.value); updateSuperDOM(data.id); }); colorInput.addEventListener('input', (e) => { ensureSelection(); ct.color = e.target.value; updateSuperDOM(data.id); });
