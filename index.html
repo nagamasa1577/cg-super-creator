@@ -155,7 +155,7 @@
         body.obs-mode #sidebar { display: none !important; }
         body.obs-mode #preset-area { display: none !important; }
         body.obs-mode #main-content { width: 100vw !important; height: 100vh !important; background: transparent !important; }
-        /* ★OBSモードで背景を完全に透明化（修正部分） */
+        /* ★OBSモードで背景を完全に透明化 */
         body.obs-mode #app-screen { background: transparent !important; }
         body.obs-mode #workspace-container { padding: 0 !important; align-items: flex-start !important; justify-content: flex-start !important; background: transparent !important; }
         body.obs-mode #workspace { border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; overflow: hidden !important; }
@@ -203,7 +203,7 @@
         </div>
     </div>
 
-    <!-- ★上限エラー画面（追加） -->
+    <!-- ★上限エラー画面 -->
     <div id="limit-error-screen" class="hidden fixed inset-0 bg-black items-center justify-center z-[9500]">
         <div class="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-2xl w-96 text-center">
             <h1 class="text-2xl font-black text-red-500 mb-4 tracking-widest">ACCESS DENIED</h1>
@@ -584,15 +584,16 @@
                         errEl.classList.add('hidden');
                         
                         const isAdmin = user.email === 'abctv1@abctv.com';
-                        const isTest = user.email.includes('test');
+                        const isTest = user.email.includes('test') || user.email.includes('boysleague');
 
                         // 1. テストアカウントの期限チェック
-                        if (isTest) {
+                        if (isTest && !isAdmin) {
                             const isAllowed = await checkAccountStatus(user);
                             if (!isAllowed) {
                                 await window.firebaseModules.signOut(auth);
                                 errEl.textContent = "試用期間（7日間）が終了しました。";
                                 errEl.classList.remove('hidden');
+                                window.history.replaceState({}, '', window.location.pathname);
                                 window.showScreen('login-screen');
                                 return;
                             }
@@ -603,6 +604,7 @@
                             const canLogin = await checkSessionLimit(user);
                             if (!canLogin) {
                                 // ログアウトはせず、このタブだけを専用のエラー画面で塞ぐ（他のタブを巻き込まない）
+                                window.history.replaceState({}, '', window.location.pathname);
                                 window.showScreen('limit-error-screen');
                                 return;
                             }
@@ -743,6 +745,44 @@
                 obsUrlInput.value = obsUrl.toString();
                 
                 obsUrlInput.onclick = () => { obsUrlInput.select(); document.execCommand('copy'); const originalText = obsUrlInput.value; obsUrlInput.value = "コピーしました！"; setTimeout(() => obsUrlInput.value = originalText, 1000); };
+                
+                // ★ 操作画面同士の連動（受信処理）を追加
+                onSnapshot(docRef, (docSnap) => {
+                    // 自分が送信したデータによる反応は無視する
+                    if (docSnap.metadata.hasPendingWrites) return;
+
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        let needsUIUpdate = false;
+
+                        if (data.supers) { supers = data.supers; needsUIUpdate = true; }
+                        if (data.extSource) { extSource = data.extSource; needsUIUpdate = true; }
+                        
+                        // プリセットの同期
+                        if (data.presets) {
+                            presets = data.presets;
+                            presetNames = data.presetNames || new Array(27).fill(null);
+                            presetThumbs = data.presetThumbs || new Array(27).fill(null);
+                            const grid = document.getElementById('preset-grid');
+                            if (grid) {
+                                for (let i = 0; i < 27; i++) updatePresetDisplay(grid.children[i], i);
+                            }
+                        }
+
+                        if (needsUIUpdate) {
+                            renderAllSupers();
+                            updateExtSourceDOM();
+                            // 選択状態の維持
+                            activeIds = activeIds.filter(id => supers.find(s => s.id === id) || id === 'ext-source');
+                            document.querySelectorAll('.super-item').forEach(el => {
+                                if (activeIds.includes(el.id)) { el.classList.add('active'); el.style.zIndex = 50; }
+                                else { el.classList.remove('active'); el.style.zIndex = 10; }
+                            });
+                            updateUIFromData();
+                        }
+                    }
+                }, (err) => console.error("Cloud sync read error:", err));
+
                 syncToCloud();
             }
         }
@@ -759,7 +799,8 @@
                 const badge = document.getElementById('cloud-sync-badge');
                 if(badge) { badge.textContent = "送信中"; badge.classList.replace('bg-blue-600', 'bg-green-600'); }
                 try {
-                    await setDoc(docRef, { supers, extSource, updatedAt: Date.now() }, { merge: true });
+                    // ★ プリセットデータも同期内容に含める
+                    await setDoc(docRef, { supers, extSource, presets, presetNames, presetThumbs, updatedAt: Date.now() }, { merge: true });
                     if(badge) { setTimeout(() => { badge.textContent = "同期済"; badge.classList.replace('bg-green-600', 'bg-blue-600'); }, 500); }
                 } catch (e) {
                     console.error("Cloud sync write error:", e);
