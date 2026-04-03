@@ -16,7 +16,7 @@
     <style>
         :root { --anim-p: 0; --live-a: 1; }
 
-        body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; background-color: #1a1a1a; color: #f0f0f0; margin: 0; overflow: hidden; user-select: none; }
+        body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; background-color: #000; color: #f0f0f0; margin: 0; overflow: hidden; user-select: none; }
 
         /* 透過チェック用市松模様 */
         .checkerboard { background-image: linear-gradient(45deg, #333 25%, transparent 25%), linear-gradient(-45deg, #333 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #333 75%), linear-gradient(-45deg, transparent 75%, #333 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
@@ -65,7 +65,7 @@
             filter: drop-shadow(0 0 10px var(--grid-color)) drop-shadow(0 0 20px var(--grid-color)); opacity: 1; 
         }
 
-        /* ★ 独立した外部ソースレイヤー */
+        /* 外部ソースレイヤー */
         .ext-item { position: absolute; cursor: move; pointer-events: auto; }
         .ext-item.active-ext::after { content: ''; position: absolute; inset: -2px; border: 2px dashed rgba(0, 255, 0, 0.9); pointer-events: none; z-index: 10; }
         .ext-resize-handle { position: absolute; bottom: -6px; right: -6px; width: 16px; height: 16px; background-color: #00ff00; border: 2px solid #fff; border-radius: 50%; cursor: se-resize; z-index: 11; display: none; }
@@ -174,252 +174,326 @@
         #progress-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; }
     </style>
 </head>
-<body class="text-sm bg-[#1a1a1a]">
+<body class="text-sm bg-black m-0 overflow-hidden font-sans">
 
-    <div id="main-content">
-        <div id="workspace-container" class="checkerboard">
-            <div id="workspace-wrapper">
-                <div id="workspace">
-                    <div id="selection-box" style="display:none; position:absolute; border: 1px dashed #00aaff; background: rgba(0, 170, 255, 0.15); pointer-events:none; z-index:9999;"></div>
-                    
-                    <!-- ★ 完全独立した外部ソース（iframe）コンテナ -->
-                    <div id="ext-source-container" style="position: absolute; display: none;">
-                        <div class="ext-item" style="width:100%; height:100%; position:relative;">
-                            <iframe src="" style="width: 100%; height: 100%; border: none; pointer-events: none; background: transparent;"></iframe>
-                            <div class="ext-resize-handle"></div>
-                            <div class="super-drag-shield"></div>
-                        </div>
-                    </div>
+    <!-- ★ローディング画面 -->
+    <div id="loading-screen" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-[10000]">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-yellow-500 mb-4"></div>
+        <div class="text-slate-500 font-bold tracking-widest">LOADING...</div>
+    </div>
 
-                    <div id="supers-container" style="position: absolute; inset: 0; z-index: 0;"></div>
-                    <div id="safety-guide"></div>
+    <!-- ★ログイン画面（Reactデザインを踏襲） -->
+    <div id="login-screen" class="hidden fixed inset-0 bg-black flex items-center justify-center z-[9000]">
+        <div class="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-2xl w-96">
+            <h1 class="text-2xl font-black text-white mb-6 text-center tracking-widest">SUPER CREATOR</h1>
+            <form id="login-form" class="flex flex-col gap-5">
+                <div>
+                    <label class="block text-slate-400 text-xs font-bold mb-2 tracking-wider">EMAIL (ID)</label>
+                    <input type="email" id="login-email" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors" placeholder="abctv1@abctv.com" required>
                 </div>
-            </div>
-        </div>
-        
-        <div id="preset-area">
-            <div class="flex items-center justify-between mb-2">
-                <h2 class="text-xs text-gray-300 font-bold tracking-wider flex items-center gap-2">
-                    <span class="w-2 h-2 bg-green-500 rounded-full inline-block"></span>
-                    PRESET SCENES
-                </h2>
-                <span class="text-[10px] text-gray-500">シーン全体を保存して一発で切り替え</span>
-            </div>
-            <div id="preset-grid" class="grid grid-cols-9 gap-2"></div>
+                <div>
+                    <label class="block text-slate-400 text-xs font-bold mb-2 tracking-wider">PASSWORD</label>
+                    <input type="password" id="login-password" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors" placeholder="••••••••" required>
+                </div>
+                <p id="login-error" class="text-red-500 text-xs font-bold mt-2 hidden text-center"></p>
+                <button type="submit" class="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 px-4 rounded-lg transition-colors tracking-widest shadow-lg">LOGIN</button>
+            </form>
         </div>
     </div>
 
-    <!-- 右クリック用コンテキストメニュー -->
-    <div id="context-menu">
-        <div class="context-menu-item" id="menu-front">最前面に移動</div>
-        <div class="context-menu-item" id="menu-forward">前面に移動</div>
-        <div class="context-menu-item" id="menu-backward">背面に移動</div>
-        <div class="context-menu-item" id="menu-back">最背面に移動</div>
-        <div class="context-menu-item" id="menu-group" style="display:none; border-top: 1px solid #444; margin-top: 4px; padding-top: 8px;">グループ化</div>
-        <div class="context-menu-item" id="menu-ungroup" style="display:none; border-top: 1px solid #444; margin-top: 4px; padding-top: 8px;">グループ解除</div>
-    </div>
+    <!-- ★アプリ本体画面 -->
+    <div id="app-screen" class="hidden relative w-full h-screen bg-[#1a1a1a]">
+        <div id="main-content">
+            <div id="workspace-container" class="checkerboard">
+                <div id="workspace-wrapper">
+                    <div id="workspace">
+                        <div id="selection-box" style="display:none; position:absolute; border: 1px dashed #00aaff; background: rgba(0, 170, 255, 0.15); pointer-events:none; z-index:9999;"></div>
+                        
+                        <div id="ext-source-container" style="position: absolute; display: none;">
+                            <div class="ext-item" style="width:100%; height:100%; position:relative;">
+                                <iframe src="" style="width: 100%; height: 100%; border: none; pointer-events: none; background: transparent;"></iframe>
+                                <div class="ext-resize-handle"></div>
+                                <div class="super-drag-shield"></div>
+                            </div>
+                        </div>
 
-    <!-- コントロールパネル -->
-    <div id="sidebar" class="shadow-xl">
-        <h1 class="text-lg font-bold mb-1.5 text-center text-blue-400 tracking-wider">SUPER CREATOR</h1>
-
-        <div class="flex gap-2 mb-1.5">
-            <button id="btn-save-proj" class="flex-1 py-1 bg-gray-600 hover:bg-gray-500 text-white text-[10px] font-bold rounded transition flex justify-center gap-1">💾 保存</button>
-            <button id="btn-load-proj" class="flex-1 py-1 bg-gray-600 hover:bg-gray-500 text-white text-[10px] font-bold rounded transition flex justify-center gap-1">📂 開く</button>
-            <input type="file" id="input-load-proj" accept=".json" style="display:none;">
-        </div>
-
-        <button class="w-full py-1 mb-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600 text-white text-[10px] font-bold rounded transition shadow-md flex justify-center items-center gap-1 opacity-50 cursor-not-allowed" disabled>
-            ✨ AI自動生成 (準備中)
-        </button>
-
-        <div class="mb-1.5 p-1.5 bg-gray-800 rounded border border-blue-600 shadow-inner">
-            <div class="flex justify-between items-center mb-1">
-                <label class="text-[9px] text-blue-300 font-bold flex items-center gap-1">☁️ クラウド同期 (リモート送出)</label>
-                <span id="cloud-sync-badge" class="hidden px-1.5 py-0.5 rounded text-[8px] bg-blue-600 text-white font-bold">待機中</span>
-            </div>
-            <div class="flex items-center gap-1">
-                <input type="text" id="input-sync-room" class="flex-1 bg-gray-900 border border-gray-600 text-white text-[10px] p-1 rounded focus:border-blue-500 outline-none" placeholder="ルーム名 (例: room1)">
-                <button id="btn-start-sync" class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-bold rounded transition shadow">接続</button>
-            </div>
-            <div id="obs-url-container" class="hidden mt-1 pt-1 border-t border-gray-700">
-                <p class="text-[8px] text-gray-400 mb-0.5">OBS入力用URL (クリックでコピー)</p>
-                <input type="text" id="input-obs-url" class="w-full bg-gray-900 text-green-400 border border-green-800 text-[8px] p-1 rounded cursor-pointer" readonly title="クリックしてコピー">
-            </div>
-        </div>
-        
-        <div class="space-y-1 pb-4">
-            <div class="flex items-center gap-2">
-                <label class="text-gray-400 text-[9px] whitespace-nowrap">サイズ:</label>
-                <select id="select-canvas-size" class="flex-1 bg-gray-800 border border-gray-600 rounded p-0.5 text-white text-[9px] focus:outline-none">
-                    <option value="1920x1080">16:9 (1920x1080)</option>
-                    <option value="1080x1920">9:16 (1080x1920)</option>
-                    <option value="custom">カスタム</option>
-                </select>
-            </div>
-            <div id="custom-size-container" class="hidden items-center gap-1 pb-1">
-                <input type="number" id="input-canvas-w" value="1920" class="w-full bg-gray-900 border border-gray-600 rounded p-1 text-white text-[9px] text-center" placeholder="幅">
-                <span class="text-gray-400 text-[9px]">x</span>
-                <input type="number" id="input-canvas-h" value="1080" class="w-full bg-gray-900 border border-gray-600 rounded p-1 text-white text-[9px] text-center" placeholder="高さ">
-                <button id="btn-apply-size" class="px-2 py-0.5 bg-blue-600 text-white text-[9px] rounded">適用</button>
-            </div>
-
-            <div class="flex gap-1 mt-1">
-                <button id="btn-style-1" class="style-btn flex-1 py-1 bg-blue-600 text-white font-bold text-[9px] rounded">スポーツ</button>
-                <button id="btn-style-2" class="style-btn flex-1 py-1 bg-gray-700 text-gray-300 font-bold text-[9px] rounded">バラエティ</button>
-                <button id="btn-style-3" class="style-btn flex-1 py-1 bg-gray-700 text-gray-300 font-bold text-[9px] rounded">報道</button>
-                
-                <div class="w-px bg-gray-600 mx-0.5"></div>
-                
-                <button id="btn-mode-super" class="flex-1 py-1 bg-purple-600 text-white font-bold text-[9px] rounded shadow-md transition">サイド</button>
-                <button id="btn-mode-futa" class="flex-1 py-1 bg-gray-700 text-gray-400 font-bold text-[9px] rounded shadow-md transition">フタ</button>
+                        <div id="supers-container" style="position: absolute; inset: 0; z-index: 0;"></div>
+                        <div id="safety-guide"></div>
+                    </div>
+                </div>
             </div>
             
-            <hr>
+            <div id="preset-area">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-xs text-gray-300 font-bold tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 bg-green-500 rounded-full inline-block"></span>
+                        PRESET SCENES
+                    </h2>
+                    <span class="text-[10px] text-gray-500">シーン全体を保存して一発で切り替え</span>
+                </div>
+                <div id="preset-grid" class="grid grid-cols-9 gap-2"></div>
+            </div>
+        </div>
 
-            <div id="container-main-text" class="cursor-pointer" title="右クリックでテキスト全体のZ順変更">
-                <div>
-                    <div class="flex gap-1 items-center mb-0.5">
-                        <input type="text" id="input-text1" class="flex-1 bg-gray-800 border border-gray-600 rounded p-1 text-white text-[11px]" placeholder="テキスト1行目">
-                        <button id="btn-toggle-text1" class="px-1.5 py-0.5 rounded text-[9px] bg-gray-700 text-green-400 w-8 flex-shrink-0 h-[24px] font-bold">ON</button>
-                    </div>
-                    <div class="flex items-center gap-1 px-1"><span class="text-gray-400 text-[9px]">大</span><input type="range" id="input-size1" min="1" max="20" step="1" class="flex-1 h-1.5"></div>
+        <div id="context-menu">
+            <div class="context-menu-item" id="menu-front">最前面に移動</div>
+            <div class="context-menu-item" id="menu-forward">前面に移動</div>
+            <div class="context-menu-item" id="menu-backward">背面に移動</div>
+            <div class="context-menu-item" id="menu-back">最背面に移動</div>
+            <div class="context-menu-item" id="menu-group" style="display:none; border-top: 1px solid #444; margin-top: 4px; padding-top: 8px;">グループ化</div>
+            <div class="context-menu-item" id="menu-ungroup" style="display:none; border-top: 1px solid #444; margin-top: 4px; padding-top: 8px;">グループ解除</div>
+        </div>
+
+        <div id="sidebar" class="shadow-xl">
+            <h1 class="text-lg font-bold mb-1 text-center text-blue-400 tracking-wider">SUPER CREATOR</h1>
+
+            <!-- ★ログイン情報とログアウトボタン -->
+            <div class="mb-1.5 p-1.5 bg-slate-900 rounded border border-slate-700 shadow-inner flex items-center justify-between">
+                <div class="flex items-center gap-1.5 overflow-hidden">
+                    <div class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_#22c55e] flex-shrink-0"></div>
+                    <span id="user-email-display" class="text-slate-300 text-[9px] font-bold tracking-wider truncate"></span>
                 </div>
-                <div class="mt-1.5">
-                    <div class="flex gap-1 items-center mb-0.5">
-                        <input type="text" id="input-text2" class="flex-1 bg-gray-800 border border-gray-600 rounded p-1 text-white text-[11px]" placeholder="テキスト2行目">
-                        <button id="btn-toggle-text2" class="px-1.5 py-0.5 rounded text-[9px] bg-gray-700 text-green-400 w-8 flex-shrink-0 h-[24px] font-bold">ON</button>
-                    </div>
-                    <div class="flex items-center gap-1 px-1"><span class="text-gray-400 text-[9px]">大</span><input type="range" id="input-size2" min="1" max="20" step="1" class="flex-1 h-1.5"></div>
-                </div>
+                <button id="btn-logout" class="text-slate-500 text-[9px] font-bold hover:text-red-400 transition-colors shrink-0">LOGOUT</button>
             </div>
 
-            <div class="p-1 bg-gray-800 rounded border border-gray-600 mt-1.5">
-                <div class="flex justify-between items-center mb-0.5">
-                    <label class="text-[9px] text-gray-300 font-bold">追加テキスト</label>
-                    <button id="btn-add-text" class="px-1.5 py-0.5 bg-blue-600 text-white text-[9px] rounded">+ 追加</button>
-                </div>
-                <div id="custom-text-editors" class="space-y-0.5 max-h-16 overflow-y-auto pr-1"></div>
+            <div class="flex gap-2 mb-1.5">
+                <button id="btn-save-proj" class="flex-1 py-1 bg-gray-600 hover:bg-gray-500 text-white text-[10px] font-bold rounded transition flex justify-center gap-1">💾 保存</button>
+                <button id="btn-load-proj" class="flex-1 py-1 bg-gray-600 hover:bg-gray-500 text-white text-[10px] font-bold rounded transition flex justify-center gap-1">📂 開く</button>
+                <input type="file" id="input-load-proj" accept=".json" style="display:none;">
             </div>
 
-            <div class="p-1 bg-gray-800 rounded border border-gray-600 mt-1">
-                <div class="flex justify-between items-center mb-0.5">
-                    <label class="text-[9px] text-gray-300 font-bold">追加画像</label>
-                    <button id="btn-add-image" class="px-1.5 py-0.5 bg-blue-600 text-white text-[9px] rounded">+ 画像読込</button>
-                    <input type="file" id="input-add-image" accept="image/png, image/jpeg, image/webp" style="display:none;">
-                </div>
-                <div id="image-editors" class="space-y-0.5 max-h-16 overflow-y-auto pr-1"></div>
-            </div>
+            <button class="w-full py-1 mb-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600 text-white text-[10px] font-bold rounded transition shadow-md flex justify-center items-center gap-1 opacity-50 cursor-not-allowed" disabled>
+                ✨ AI自動生成 (準備中)
+            </button>
 
-            <!-- ★ 外部ソース（独立管理） -->
-            <div class="p-1 bg-gray-800 rounded border border-gray-600 mt-1" id="container-external-source" title="右クリックでZ順変更">
-                <div class="flex justify-between items-center mb-0.5">
-                    <label class="text-[9px] text-green-400 font-bold flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 bg-green-500 rounded-full inline-block"></span>外部ソース (独立配置)
-                    </label>
+            <div class="mb-1.5 p-1.5 bg-gray-800 rounded border border-blue-600 shadow-inner">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="text-[9px] text-blue-300 font-bold flex items-center gap-1">☁️ クラウド同期 (リモート送出)</label>
+                    <span id="cloud-sync-badge" class="hidden px-1.5 py-0.5 rounded text-[8px] bg-blue-600 text-white font-bold">待機中</span>
                 </div>
                 <div class="flex items-center gap-1">
-                    <input type="text" id="input-external-url" class="flex-1 bg-gray-900 border border-gray-600 text-white text-[10px] p-1 rounded" placeholder="https://スコア等のURL">
-                    <button id="btn-apply-url" class="px-1.5 py-0.5 bg-green-600 hover:bg-green-500 text-white text-[9px] rounded transition shadow">適用</button>
+                    <input type="text" id="input-sync-room" class="flex-1 bg-gray-900 border border-gray-600 text-white text-[10px] p-1 rounded focus:border-blue-500 outline-none" placeholder="ルーム名 (例: room1)">
+                    <button id="btn-start-sync" class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-bold rounded transition shadow">接続</button>
                 </div>
-            </div>
-
-            <hr>
-
-            <div class="flex justify-between px-1">
-                <div class="flex flex-col items-center"><label class="text-gray-400 text-[9px] mb-0.5">メインカラー</label><input type="color" id="input-color-main" class="color-picker-ui"></div>
-                <div class="flex flex-col items-center"><label class="text-gray-400 text-[9px] mb-0.5">アクセント1</label><input type="color" id="input-color-acc1" class="color-picker-ui"></div>
-                <div class="flex flex-col items-center"><label class="text-gray-400 text-[9px] mb-0.5">アクセント2</label><input type="color" id="input-color-acc2" class="color-picker-ui"></div>
-                <div class="flex flex-col items-center transition-opacity duration-200" id="container-color-bg"><label class="text-gray-400 text-[9px] mb-0.5" id="label-color-bg">フタ背景</label><input type="color" id="input-color-bg" class="color-picker-ui" value="#4ce0ff"></div>
-                <div class="flex flex-col items-center transition-opacity duration-200" id="container-color-grid"><label class="text-gray-400 text-[9px] mb-0.5" id="label-color-grid">3Dグリッド</label><input type="color" id="input-color-grid" class="color-picker-ui" value="#ffffff"></div>
-            </div>
-
-            <hr>
-
-            <div id="container-live-badge" class="cursor-pointer" title="右クリックでバッジのZ順変更">
-                <div class="flex items-center justify-between mb-1">
-                    <label class="text-gray-400 text-[10px]">LIVE</label>
-                    <div class="flex gap-1 w-2/3">
-                        <button id="btn-live-1" class="live-btn flex-1 py-0.5 bg-red-600 text-white font-bold text-[9px] rounded">標準</button>
-                        <button id="btn-live-2" class="live-btn flex-1 py-0.5 bg-gray-700 text-gray-300 font-bold text-[9px] rounded">フラット</button>
-                        <button id="btn-live-3" class="live-btn flex-1 py-0.5 bg-gray-700 text-gray-300 font-bold text-[9px] rounded">ネオン</button>
-                    </div>
-                    <button id="btn-toggle-live" class="px-1 py-0.5 rounded text-[9px] bg-gray-700 text-green-400">ON</button>
+                <div id="obs-url-container" class="hidden mt-1 pt-1 border-t border-gray-700">
+                    <p class="text-[8px] text-gray-400 mb-0.5">OBS入力用URL (クリックでコピー)</p>
+                    <input type="text" id="input-obs-url" class="w-full bg-gray-900 text-green-400 border border-green-800 text-[8px] p-1 rounded cursor-pointer" readonly title="クリックしてコピー">
                 </div>
-                <div class="flex items-center gap-1 px-1 mb-0.5">
-                    <span class="text-gray-400 text-[9px] whitespace-nowrap">サイズ</span>
-                    <input type="range" id="input-live-scale" min="0.5" max="3" step="0.05" value="1" class="flex-1 h-1.5">
-                </div>
-            </div>
-
-            <hr>
-
-            <div class="flex items-center mb-1 mt-1">
-                <label class="text-gray-400 text-[10px] w-12 flex-shrink-0">INｱｸｼｮﾝ</label>
-                <div class="flex gap-1 text-[9px] text-gray-400 flex-1 justify-center">
-                    <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="0" checked>オフ</label>
-                    <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="1" title="スライド">1</label>
-                    <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="2" title="エキスパンド">2</label>
-                    <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="3" title="3Dビルド">3</label>
-                    <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="4" title="バウンス">4</label>
-                </div>
-                <button id="btn-play-action" class="px-1.5 py-0.5 rounded text-[9px] bg-blue-600 hover:bg-blue-500 text-white font-bold shadow w-10 flex-shrink-0">PLAY</button>
-            </div>
-
-            <div class="flex items-center mb-1">
-                <label class="text-gray-400 text-[10px] w-12 flex-shrink-0">マット</label>
-                <div class="flex gap-1 text-[9px] text-gray-400 flex-1 justify-center">
-                    <label class="cursor-pointer flex items-center"><input type="radio" name="mat-edit" value="0" checked>オフ</label>
-                    <label class="cursor-pointer flex items-center mat-label" data-mat="1"><input type="radio" name="mat-edit" value="1">1</label>
-                    <label class="cursor-pointer flex items-center mat-label" data-mat="2"><input type="radio" name="mat-edit" value="2">2</label>
-                    <label class="cursor-pointer flex items-center mat-label" data-mat="3"><input type="radio" name="mat-edit" value="3">3</label>
-                    <label class="cursor-pointer flex items-center mat-label" data-mat="4"><input type="radio" name="mat-edit" value="4">4</label>
-                </div>
-                <button id="btn-toggle-mat" class="px-1.5 py-0.5 rounded text-[9px] bg-gray-700 text-green-400 w-10 flex-shrink-0">ON</button>
-            </div>
-
-            <div class="bg-gray-800 p-1 rounded border border-gray-600">
-                <div class="flex justify-between items-center cursor-pointer" id="toggle-opacity-panel">
-                    <label class="text-[9px] text-gray-300 font-bold cursor-pointer">透明度</label>
-                    <span class="text-[9px] text-gray-400" id="opacity-icon">▼</span>
-                </div>
-                <div id="opacity-panel" class="hidden flex-col gap-1 mt-1">
-                    <div class="flex items-center gap-1"><span class="text-[9px] text-gray-400 w-4">1層</span><input type="range" id="op-1" min="0" max="100" class="flex-1 h-1.5 input-opacity"></div>
-                    <div class="flex items-center gap-1"><span class="text-[9px] text-gray-400 w-4">2層</span><input type="range" id="op-2" min="0" max="100" class="flex-1 h-1.5 input-opacity"></div>
-                    <div class="flex items-center gap-1"><span class="text-[9px] text-gray-400 w-4">3層</span><input type="range" id="op-3" min="0" max="100" class="flex-1 h-1.5 input-opacity"></div>
-                    <div class="flex items-center gap-1"><span class="text-[9px] text-gray-400 w-4">4層</span><input type="range" id="op-4" min="0" max="100" class="flex-1 h-1.5 input-opacity"></div>
-                </div>
-            </div>
-
-            <div class="pt-1 space-y-1">
-                <button id="btn-duplicate" class="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded shadow transition">スーパー複製 (Ctrl+C / V)</button>
-                <button id="btn-toggle-moving" class="w-full py-1 bg-gray-600 hover:bg-gray-500 text-white text-[10px] font-bold rounded shadow transition">ムービング: 稼働中</button>
-                
-                <div class="flex gap-1">
-                    <button id="btn-obs" class="flex-1 py-1 border border-green-500 text-green-400 text-[10px] font-bold rounded shadow">OBS</button>
-                    <button id="btn-fullscreen" class="flex-1 py-1 bg-purple-600 text-white text-[10px] font-bold rounded shadow">全画面</button>
-                </div>
-                <button id="btn-export-png" class="w-full py-1.5 bg-gradient-to-r from-blue-500 to-cyan-600 text-white font-bold rounded shadow-lg text-[10px] mt-1">PNG書き出し</button>
-                <button id="btn-export" class="w-full py-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded shadow-lg text-[10px]">TGA連番ZIP書き出し</button>
             </div>
             
-            <p class="text-[8px] text-gray-500 text-center leading-none mt-1">Ctrl+Z: 戻る / Shift+Ctrl+Z: やり直し</p>
+            <div class="space-y-1 pb-4">
+                <div class="flex items-center gap-2">
+                    <label class="text-gray-400 text-[9px] whitespace-nowrap">サイズ:</label>
+                    <select id="select-canvas-size" class="flex-1 bg-gray-800 border border-gray-600 rounded p-0.5 text-white text-[9px] focus:outline-none">
+                        <option value="1920x1080">16:9 (1920x1080)</option>
+                        <option value="1080x1920">9:16 (1080x1920)</option>
+                        <option value="custom">カスタム</option>
+                    </select>
+                </div>
+                <div id="custom-size-container" class="hidden items-center gap-1 pb-1">
+                    <input type="number" id="input-canvas-w" value="1920" class="w-full bg-gray-900 border border-gray-600 rounded p-1 text-white text-[9px] text-center" placeholder="幅">
+                    <span class="text-gray-400 text-[9px]">x</span>
+                    <input type="number" id="input-canvas-h" value="1080" class="w-full bg-gray-900 border border-gray-600 rounded p-1 text-white text-[9px] text-center" placeholder="高さ">
+                    <button id="btn-apply-size" class="px-2 py-0.5 bg-blue-600 text-white text-[9px] rounded">適用</button>
+                </div>
+
+                <div class="flex gap-1 mt-1">
+                    <button id="btn-style-1" class="style-btn flex-1 py-1 bg-blue-600 text-white font-bold text-[9px] rounded">スポーツ</button>
+                    <button id="btn-style-2" class="style-btn flex-1 py-1 bg-gray-700 text-gray-300 font-bold text-[9px] rounded">バラエティ</button>
+                    <button id="btn-style-3" class="style-btn flex-1 py-1 bg-gray-700 text-gray-300 font-bold text-[9px] rounded">報道</button>
+                    
+                    <div class="w-px bg-gray-600 mx-0.5"></div>
+                    
+                    <button id="btn-mode-super" class="flex-1 py-1 bg-purple-600 text-white font-bold text-[9px] rounded shadow-md transition">サイド</button>
+                    <button id="btn-mode-futa" class="flex-1 py-1 bg-gray-700 text-gray-400 font-bold text-[9px] rounded shadow-md transition">フタ</button>
+                </div>
+                
+                <hr>
+
+                <div id="container-main-text" class="cursor-pointer" title="右クリックでテキスト全体のZ順変更">
+                    <div>
+                        <div class="flex gap-1 items-center mb-0.5">
+                            <input type="text" id="input-text1" class="flex-1 bg-gray-800 border border-gray-600 rounded p-1 text-white text-[11px]" placeholder="テキスト1行目">
+                            <button id="btn-toggle-text1" class="px-1.5 py-0.5 rounded text-[9px] bg-gray-700 text-green-400 w-8 flex-shrink-0 h-[24px] font-bold">ON</button>
+                        </div>
+                        <div class="flex items-center gap-1 px-1"><span class="text-gray-400 text-[9px]">大</span><input type="range" id="input-size1" min="1" max="20" step="1" class="flex-1 h-1.5"></div>
+                    </div>
+                    <div class="mt-1.5">
+                        <div class="flex gap-1 items-center mb-0.5">
+                            <input type="text" id="input-text2" class="flex-1 bg-gray-800 border border-gray-600 rounded p-1 text-white text-[11px]" placeholder="テキスト2行目">
+                            <button id="btn-toggle-text2" class="px-1.5 py-0.5 rounded text-[9px] bg-gray-700 text-green-400 w-8 flex-shrink-0 h-[24px] font-bold">ON</button>
+                        </div>
+                        <div class="flex items-center gap-1 px-1"><span class="text-gray-400 text-[9px]">大</span><input type="range" id="input-size2" min="1" max="20" step="1" class="flex-1 h-1.5"></div>
+                    </div>
+                </div>
+
+                <div class="p-1 bg-gray-800 rounded border border-gray-600 mt-1.5">
+                    <div class="flex justify-between items-center mb-0.5">
+                        <label class="text-[9px] text-gray-300 font-bold">追加テキスト</label>
+                        <button id="btn-add-text" class="px-1.5 py-0.5 bg-blue-600 text-white text-[9px] rounded">+ 追加</button>
+                    </div>
+                    <div id="custom-text-editors" class="space-y-0.5 max-h-16 overflow-y-auto pr-1"></div>
+                </div>
+
+                <div class="p-1 bg-gray-800 rounded border border-gray-600 mt-1">
+                    <div class="flex justify-between items-center mb-0.5">
+                        <label class="text-[9px] text-gray-300 font-bold">追加画像</label>
+                        <button id="btn-add-image" class="px-1.5 py-0.5 bg-blue-600 text-white text-[9px] rounded">+ 画像読込</button>
+                        <input type="file" id="input-add-image" accept="image/png, image/jpeg, image/webp" style="display:none;">
+                    </div>
+                    <div id="image-editors" class="space-y-0.5 max-h-16 overflow-y-auto pr-1"></div>
+                </div>
+
+                <div class="p-1 bg-gray-800 rounded border border-gray-600 mt-1" id="container-external-source" title="右クリックでZ順変更">
+                    <div class="flex justify-between items-center mb-0.5">
+                        <label class="text-[9px] text-green-400 font-bold flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full inline-block"></span>外部ソース (独立配置)
+                        </label>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <input type="text" id="input-external-url" class="flex-1 bg-gray-900 border border-gray-600 text-white text-[10px] p-1 rounded" placeholder="https://スコア等のURL">
+                        <button id="btn-apply-url" class="px-1.5 py-0.5 bg-green-600 hover:bg-green-500 text-white text-[9px] rounded transition shadow">適用</button>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="flex justify-between px-1">
+                    <div class="flex flex-col items-center"><label class="text-gray-400 text-[9px] mb-0.5">メインカラー</label><input type="color" id="input-color-main" class="color-picker-ui"></div>
+                    <div class="flex flex-col items-center"><label class="text-gray-400 text-[9px] mb-0.5">アクセント1</label><input type="color" id="input-color-acc1" class="color-picker-ui"></div>
+                    <div class="flex flex-col items-center"><label class="text-gray-400 text-[9px] mb-0.5">アクセント2</label><input type="color" id="input-color-acc2" class="color-picker-ui"></div>
+                    <div class="flex flex-col items-center transition-opacity duration-200" id="container-color-bg"><label class="text-gray-400 text-[9px] mb-0.5" id="label-color-bg">フタ背景</label><input type="color" id="input-color-bg" class="color-picker-ui" value="#4ce0ff"></div>
+                    <div class="flex flex-col items-center transition-opacity duration-200" id="container-color-grid"><label class="text-gray-400 text-[9px] mb-0.5" id="label-color-grid">3Dグリッド</label><input type="color" id="input-color-grid" class="color-picker-ui" value="#ffffff"></div>
+                </div>
+
+                <hr>
+
+                <div id="container-live-badge" class="cursor-pointer" title="右クリックでバッジのZ順変更">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-gray-400 text-[10px]">LIVE</label>
+                        <div class="flex gap-1 w-2/3">
+                            <button id="btn-live-1" class="live-btn flex-1 py-0.5 bg-red-600 text-white font-bold text-[9px] rounded">標準</button>
+                            <button id="btn-live-2" class="live-btn flex-1 py-0.5 bg-gray-700 text-gray-300 font-bold text-[9px] rounded">フラット</button>
+                            <button id="btn-live-3" class="live-btn flex-1 py-0.5 bg-gray-700 text-gray-300 font-bold text-[9px] rounded">ネオン</button>
+                        </div>
+                        <button id="btn-toggle-live" class="px-1 py-0.5 rounded text-[9px] bg-gray-700 text-green-400">ON</button>
+                    </div>
+                    <div class="flex items-center gap-1 px-1 mb-0.5">
+                        <span class="text-gray-400 text-[9px] whitespace-nowrap">サイズ</span>
+                        <input type="range" id="input-live-scale" min="0.5" max="3" step="0.05" value="1" class="flex-1 h-1.5">
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="flex items-center mb-1 mt-1">
+                    <label class="text-gray-400 text-[10px] w-12 flex-shrink-0">INｱｸｼｮﾝ</label>
+                    <div class="flex gap-1 text-[9px] text-gray-400 flex-1 justify-center">
+                        <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="0" checked>オフ</label>
+                        <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="1" title="スライド">1</label>
+                        <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="2" title="エキスパンド">2</label>
+                        <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="3" title="3Dビルド">3</label>
+                        <label class="cursor-pointer flex items-center"><input type="radio" name="in-action" value="4" title="バウンス">4</label>
+                    </div>
+                    <button id="btn-play-action" class="px-1.5 py-0.5 rounded text-[9px] bg-blue-600 hover:bg-blue-500 text-white font-bold shadow w-10 flex-shrink-0">PLAY</button>
+                </div>
+
+                <div class="flex items-center mb-1">
+                    <label class="text-gray-400 text-[10px] w-12 flex-shrink-0">マット</label>
+                    <div class="flex gap-1 text-[9px] text-gray-400 flex-1 justify-center">
+                        <label class="cursor-pointer flex items-center"><input type="radio" name="mat-edit" value="0" checked>オフ</label>
+                        <label class="cursor-pointer flex items-center mat-label" data-mat="1"><input type="radio" name="mat-edit" value="1">1</label>
+                        <label class="cursor-pointer flex items-center mat-label" data-mat="2"><input type="radio" name="mat-edit" value="2">2</label>
+                        <label class="cursor-pointer flex items-center mat-label" data-mat="3"><input type="radio" name="mat-edit" value="3">3</label>
+                        <label class="cursor-pointer flex items-center mat-label" data-mat="4"><input type="radio" name="mat-edit" value="4">4</label>
+                    </div>
+                    <button id="btn-toggle-mat" class="px-1.5 py-0.5 rounded text-[9px] bg-gray-700 text-green-400 w-10 flex-shrink-0">ON</button>
+                </div>
+
+                <div class="bg-gray-800 p-1 rounded border border-gray-600">
+                    <div class="flex justify-between items-center cursor-pointer" id="toggle-opacity-panel">
+                        <label class="text-[9px] text-gray-300 font-bold cursor-pointer">透明度</label>
+                        <span class="text-[9px] text-gray-400" id="opacity-icon">▼</span>
+                    </div>
+                    <div id="opacity-panel" class="hidden flex-col gap-1 mt-1">
+                        <div class="flex items-center gap-1"><span class="text-[9px] text-gray-400 w-4">1層</span><input type="range" id="op-1" min="0" max="100" class="flex-1 h-1.5 input-opacity"></div>
+                        <div class="flex items-center gap-1"><span class="text-[9px] text-gray-400 w-4">2層</span><input type="range" id="op-2" min="0" max="100" class="flex-1 h-1.5 input-opacity"></div>
+                        <div class="flex items-center gap-1"><span class="text-[9px] text-gray-400 w-4">3層</span><input type="range" id="op-3" min="0" max="100" class="flex-1 h-1.5 input-opacity"></div>
+                        <div class="flex items-center gap-1"><span class="text-[9px] text-gray-400 w-4">4層</span><input type="range" id="op-4" min="0" max="100" class="flex-1 h-1.5 input-opacity"></div>
+                    </div>
+                </div>
+
+                <div class="pt-1 space-y-1">
+                    <button id="btn-duplicate" class="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded shadow transition">スーパー複製 (Ctrl+C / V)</button>
+                    <button id="btn-toggle-moving" class="w-full py-1 bg-gray-600 hover:bg-gray-500 text-white text-[10px] font-bold rounded shadow transition">ムービング: 稼働中</button>
+                    
+                    <div class="flex gap-1">
+                        <button id="btn-obs" class="flex-1 py-1 border border-green-500 text-green-400 text-[10px] font-bold rounded shadow">OBS</button>
+                        <button id="btn-fullscreen" class="flex-1 py-1 bg-purple-600 text-white text-[10px] font-bold rounded shadow">全画面</button>
+                    </div>
+                    <button id="btn-export-png" class="w-full py-1.5 bg-gradient-to-r from-blue-500 to-cyan-600 text-white font-bold rounded shadow-lg text-[10px] mt-1">PNG書き出し</button>
+                    <button id="btn-export" class="w-full py-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded shadow-lg text-[10px]">TGA連番ZIP書き出し</button>
+                </div>
+                
+                <p class="text-[8px] text-gray-500 text-center leading-none mt-1">Ctrl+Z: 戻る / Shift+Ctrl+Z: やり直し</p>
+            </div>
         </div>
     </div>
 
     <script type="module">
-        // Firebase初期化（APIキーは変更済み）
         window.firebaseDb = null;
+        window.firebaseAuth = null;
         window.firebaseModules = {};
         window.firebaseAppId = typeof __app_id !== 'undefined' ? __app_id : 'cg-super-creator';
+
+        // ★画面切り替え制御
+        window.showScreen = function(screenId) {
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('app-screen').classList.add('hidden');
+            
+            if (screenId === 'app-screen') {
+                document.getElementById(screenId).classList.remove('hidden');
+                document.getElementById(screenId).classList.add('flex');
+                if (typeof updateScale === 'function') updateScale();
+            } else {
+                document.getElementById(screenId).classList.remove('hidden');
+                document.getElementById(screenId).classList.add('flex');
+            }
+        };
+
+        // ★テストアカウントの期限判定 (7日間)
+        async function checkAccountStatus(user) {
+            if (!user.email.includes('test')) return true; // 管理者は無制限
+
+            const { doc, getDoc, setDoc } = window.firebaseModules;
+            const userRef = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'account', 'status');
+            
+            try {
+                const snap = await getDoc(userRef);
+                if (!snap.exists()) {
+                    await setDoc(userRef, { firstLoginAt: Date.now() });
+                    return true;
+                } else {
+                    const data = snap.data();
+                    const now = Date.now();
+                    const days7 = 7 * 24 * 60 * 60 * 1000;
+                    if (now - data.firstLoginAt > days7) return false; // 期限切れ
+                    return true;
+                }
+            } catch (e) {
+                console.error("Account check failed:", e);
+                return false;
+            }
+        }
 
         async function initFirebase() {
             try {
                 const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
-                const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
-                const { getFirestore, doc, setDoc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                const { getFirestore, doc, getDoc, setDoc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
 
-                window.firebaseModules = { doc, setDoc, onSnapshot };
+                window.firebaseModules = { doc, getDoc, setDoc, onSnapshot, signInWithEmailAndPassword, signOut };
 
                 const defaultFirebaseConfig = {
                     apiKey: "AIzaSyAZjLA9gSfjMH6ydareUbw6KaCADSZ7mag",
@@ -435,15 +509,45 @@
                 const app = initializeApp(firebaseConfig);
                 const auth = getAuth(app);
                 window.firebaseDb = getFirestore(app);
+                window.firebaseAuth = auth;
 
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                let isObsMode = document.body.classList.contains('obs-mode') || new URLSearchParams(window.location.search).get('obs') === 'true';
 
-                onAuthStateChanged(auth, (user) => {
-                    if (user && window.syncRoomId) startSyncProcess();
+                onAuthStateChanged(auth, async (user) => {
+                    // ★OBSモードは裏口で自動匿名ログイン
+                    if (isObsMode) {
+                        if (!user) {
+                            await signInAnonymously(auth);
+                        } else {
+                            window.showScreen('app-screen');
+                            if (window.syncRoomId) startSyncProcess();
+                        }
+                        return;
+                    }
+
+                    // ★通常ログインフロー
+                    if (user && !user.isAnonymous) {
+                        const isAllowed = await checkAccountStatus(user);
+                        if (isAllowed) {
+                            document.getElementById('user-email-display').textContent = user.email;
+                            window.showScreen('app-screen');
+                            
+                            // 自動で同期ルーム名にメールアドレスの@前を設定
+                            if (!document.getElementById('input-sync-room').value) {
+                                document.getElementById('input-sync-room').value = user.email.split('@')[0];
+                            }
+                            if (window.syncRoomId) startSyncProcess();
+                        } else {
+                            await window.firebaseModules.signOut(auth);
+                            const errEl = document.getElementById('login-error');
+                            errEl.textContent = "期限切れです";
+                            errEl.classList.remove('hidden');
+                            window.showScreen('login-screen');
+                        }
+                    } else {
+                        // 未ログイン
+                        window.showScreen('login-screen');
+                    }
                 });
             } catch (e) { console.error("Firebase init error", e); }
         }
@@ -451,28 +555,47 @@
     </script>
 
     <script>
-        // ★ 独立した外部ソース（iframe）のデータ状態
-        let extSource = { url: '', x: 0, y: 0, w: 800, h: 450, zIndex: 5 };
+        // ★ログイン・ログアウトのイベント処理
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
+            const errEl = document.getElementById('login-error');
+            errEl.classList.add('hidden');
+            window.showScreen('loading-screen');
+            
+            try {
+                await window.firebaseModules.signInWithEmailAndPassword(window.firebaseAuth, email, pass);
+            } catch(err) {
+                window.showScreen('login-screen');
+                errEl.textContent = "ログインに失敗しました。";
+                errEl.classList.remove('hidden');
+            }
+        });
 
+        document.getElementById('btn-logout').addEventListener('click', async () => {
+            window.showScreen('loading-screen');
+            await window.firebaseModules.signOut(window.firebaseAuth);
+            window.location.reload();
+        });
+
+        // --- 以下、既存のアプリロジック ---
+        let extSource = { url: '', x: 0, y: 0, w: 800, h: 450, zIndex: 5 };
         let supers = [];
         let activeIds = []; 
         let lastActiveIds = []; 
         let superCounter = 0;
         let ctCounter = 0;
         let imgCounter = 0;
-
         let presets = new Array(27).fill(null);
         let presetNames = new Array(27).fill(null);
         let presetThumbs = new Array(27).fill(null); 
-
         let dragType = ''; 
         let dragTargetId = null;
         let dragStartSuperPos = {}; 
-        
         let historyList = [];
         let historyIndex = -1;
         let clipboardData = null;
-
         let canvasWidth = 1920;
         let canvasHeight = 1080;
         let isMoving = true;
@@ -480,6 +603,7 @@
         
         window.syncRoomId = new URLSearchParams(window.location.search).get('room') || '';
         let isObsMode = document.body.classList.contains('obs-mode') || new URLSearchParams(window.location.search).get('obs') === 'true';
+        if (isObsMode) document.body.classList.add('obs-mode');
         let lastTriggerTime = 0;
         let syncTimeout;
 
@@ -527,7 +651,7 @@
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         if (data.supers) { supers = data.supers; activeIds = []; renderAllSupers(); }
-                        if (data.extSource) { extSource = data.extSource; updateExtSourceDOM(); } // 外部ソースも同期
+                        if (data.extSource) { extSource = data.extSource; updateExtSourceDOM(); }
                         if (data.actionTrigger && data.actionTrigger.timestamp > lastTriggerTime) {
                             lastTriggerTime = data.actionTrigger.timestamp;
                             data.actionTrigger.actions.forEach(act => playInAction(act.id, act.type));
@@ -570,11 +694,10 @@
             const roomName = document.getElementById('input-sync-room').value.trim();
             if (!roomName) return alert('ルーム名を入力してください');
             const url = new URL(window.location.href); url.searchParams.set('room', roomName); window.history.pushState({}, '', url); window.syncRoomId = roomName;
-            if (!window.firebaseDb) alert("Firebaseが初期化されていません。Vercel等で利用する場合は設定を確認してください。"); else startSyncProcess();
+            if (!window.firebaseDb) alert("Firebaseが初期化されていません。"); else startSyncProcess();
         });
 
-        let currentScale = 1;
-        function updateScale() {
+        window.updateScale = function() {
             const container = document.getElementById('workspace-container'); if (!container) return;
             if (document.body.classList.contains('obs-mode')) { currentScale = 1; workspaceWrapper.style.width = canvasWidth + 'px'; workspaceWrapper.style.height = canvasHeight + 'px'; workspace.style.width = canvasWidth + 'px'; workspace.style.height = canvasHeight + 'px'; workspace.style.transform = `scale(1)`; return; }
             let targetW = container.clientWidth * 0.95; let targetH = container.clientHeight * 0.95;
@@ -582,11 +705,11 @@
             const scaleX = targetW / canvasWidth; const scaleY = targetH / canvasHeight; currentScale = Math.min(scaleX, scaleY);
             workspaceWrapper.style.width = (canvasWidth * currentScale) + 'px'; workspaceWrapper.style.height = (canvasHeight * currentScale) + 'px';
             workspace.style.width = canvasWidth + 'px'; workspace.style.height = canvasHeight + 'px'; workspace.style.transform = `scale(${currentScale})`;
-        }
-        window.addEventListener('resize', updateScale);
-        const workspaceContainerObserver = new ResizeObserver(() => { requestAnimationFrame(() => { updateScale(); }); });
+        };
+        window.addEventListener('resize', window.updateScale);
+        const workspaceContainerObserver = new ResizeObserver(() => { requestAnimationFrame(() => { window.updateScale(); }); });
 
-        function updateCanvasSize(w, h) { canvasWidth = w; canvasHeight = h; updateScale(); supers.forEach(s => updateSuperDOM(s.id)); updateExtSourceDOM(); }
+        function updateCanvasSize(w, h) { canvasWidth = w; canvasHeight = h; window.updateScale(); supers.forEach(s => updateSuperDOM(s.id)); updateExtSourceDOM(); }
         document.getElementById('select-canvas-size').addEventListener('change', (e) => { const val = e.target.value; const customContainer = document.getElementById('custom-size-container'); if (val === 'custom') { customContainer.classList.remove('hidden'); customContainer.classList.add('flex'); } else { customContainer.classList.remove('flex'); customContainer.classList.add('hidden'); const [w, h] = val.split('x').map(Number); updateCanvasSize(w, h); } });
         document.getElementById('btn-apply-size').addEventListener('click', () => { updateCanvasSize(parseInt(document.getElementById('input-canvas-w').value) || 1920, parseInt(document.getElementById('input-canvas-h').value) || 1080); });
 
@@ -605,8 +728,6 @@
                 }
             }
         }
-
-        function getOrSelectSuper() { let data = getActiveSuper(); if (!data && supers.length > 0) { selectSuper(supers[0].id); data = getActiveSuper(); } return data; }
 
         function initLayersOrder(data) {
             data.layersOrder = [];
@@ -780,7 +901,7 @@
 
         document.getElementById('btn-apply-url').addEventListener('click', () => {
             extSource.url = document.getElementById('input-external-url').value.trim();
-            if (extSource.url && extSource.w === 0) { extSource.w = 800; extSource.h = 450; } // 初回サイズ
+            if (extSource.url && extSource.w === 0) { extSource.w = 800; extSource.h = 450; }
             updateExtSourceDOM();
             saveHistory();
         });
@@ -900,7 +1021,6 @@
             if (activeMatLayer !== "0" && activeIds.includes(id)) { matEditor.style.display = 'block'; const rect = data.matRects[activeMatLayer]; matEditor.style.setProperty('--mx', rect.x + '%'); matEditor.style.setProperty('--my', rect.y + '%'); matEditor.style.setProperty('--mw', rect.w + '%'); matEditor.style.setProperty('--mh', rect.h + '%'); } else { matEditor.style.display = 'none'; }
         }
 
-        // ★ 選択とドラッグの処理（外部ソース・スーパー共通化）
         function selectSuper(id, add = false) {
             if (id === null) { activeIds = []; } else {
                 let targetIds = [id];
@@ -952,7 +1072,6 @@
         function handleMouseDown(e, id) { handleMouseDownCommon(e, id); }
         document.getElementById('ext-source-container').addEventListener('mousedown', (e) => handleMouseDownCommon(e, 'ext-source'));
 
-        // ★ ドラッグ・リサイズの座標計算（外部ソース対応）
         function handleMouseMove(e) {
             if (!dragType) return; isDragged = true;
             const dx = (e.clientX - startMouseX) / currentScale; const dy = (e.clientY - startMouseY) / currentScale;
@@ -964,7 +1083,6 @@
                 }); return; 
             } 
             
-            // 独立外部ソースのドラッグ・リサイズ処理
             if (dragType === 'ext-resize') { extSource.w = Math.max(50, startObjW + dx); extSource.h = Math.max(50, startObjH + dy); updateExtSourceDOM(); return; }
             if (dragType === 'ext') { extSource.x = startObjX + dx; extSource.y = startObjY + dy; updateExtSourceDOM(); return; }
 
@@ -1123,9 +1241,6 @@
         
         ui.liveScale.addEventListener('input', (e) => { ensureSelection(); getActiveSupers().forEach(data => { data.liveScale = parseFloat(e.target.value); updateSuperDOM(data.id); }); }); ui.liveScale.addEventListener('change', () => { ensureSelection(); saveHistory(); });
 
-        // --- ここから欠落していたイベントリスナー群を復旧 ---
-        
-        // スタイル切り替え（スポーツ・バラエティ・報道）
         ui.btnStyles.forEach((btn, idx) => {
             btn.addEventListener('click', () => {
                 ensureSelection(); const activeSupers = getActiveSupers(); if (activeSupers.length === 0) return;
@@ -1134,7 +1249,6 @@
             });
         });
 
-        // LIVEスタイル切り替え
         ui.btnLiveTypes.forEach((btn, idx) => {
             btn.addEventListener('click', () => {
                 ensureSelection(); const activeSupers = getActiveSupers(); if (activeSupers.length === 0) return;
@@ -1143,7 +1257,6 @@
             });
         });
 
-        // LIVEバッジ ON/OFF
         ui.btnLive.addEventListener('click', () => {
             ensureSelection(); const activeSupers = getActiveSupers(); if (activeSupers.length === 0) return;
             const newState = !activeSupers[0].showLive;
@@ -1151,7 +1264,6 @@
             updateUIFromData(); saveHistory();
         });
 
-        // マット ON/OFF
         ui.btnMat.addEventListener('click', () => {
             ensureSelection(); const activeSupers = getActiveSupers(); if (activeSupers.length === 0) return;
             const newState = !activeSupers[0].showMat;
@@ -1159,7 +1271,6 @@
             updateUIFromData(); saveHistory();
         });
 
-        // テキスト1 ON/OFF
         ui.btnText1.addEventListener('click', () => {
             ensureSelection(); const activeSupers = getActiveSupers(); if (activeSupers.length === 0) return;
             const isFuta = activeSupers[0].isFuta;
@@ -1168,7 +1279,6 @@
             updateUIFromData(); saveHistory();
         });
 
-        // テキスト2 ON/OFF
         ui.btnText2.addEventListener('click', () => {
             ensureSelection(); const activeSupers = getActiveSupers(); if (activeSupers.length === 0) return;
             const isFuta = activeSupers[0].isFuta;
@@ -1177,7 +1287,6 @@
             updateUIFromData(); saveHistory();
         });
 
-        // 追加テキスト
         document.getElementById('btn-add-text').addEventListener('click', () => {
             ensureSelection(); const data = getActiveSuper(); if (!data) return alert('追加先となるスーパーを選択してください。');
             ctCounter++; const newId = 'ct_' + ctCounter;
@@ -1186,7 +1295,6 @@
             updateSuperDOM(data.id); updateUIFromData(); saveHistory();
         });
 
-        // 追加画像
         document.getElementById('btn-add-image').addEventListener('click', () => {
             ensureSelection(); const data = getActiveSuper(); if (!data) return alert('追加先となるスーパーを選択してください。');
             document.getElementById('input-add-image').click();
@@ -1209,14 +1317,10 @@
             reader.readAsDataURL(file); e.target.value = '';
         });
 
-        // マット編集ラジオボタン切り替え時の再描画
         document.querySelectorAll('input[name="mat-edit"]').forEach(radio => {
-            radio.addEventListener('change', () => {
-                ensureSelection(); activeIds.forEach(id => updateSuperDOM(id));
-            });
+            radio.addEventListener('change', () => { ensureSelection(); activeIds.forEach(id => updateSuperDOM(id)); });
         });
 
-        // 透明度パネルの操作
         for (let i = 1; i <= 4; i++) {
             ui.ops[i].addEventListener('input', (e) => {
                 ensureSelection(); const activeSupers = getActiveSupers(); if (activeSupers.length === 0) return;
@@ -1225,7 +1329,6 @@
             ui.ops[i].addEventListener('change', () => { ensureSelection(); saveHistory(); });
         }
 
-        // スーパー複製ボタン
         document.getElementById('btn-duplicate').addEventListener('click', () => {
             if (activeIds.length > 0) {
                 clipboardData = JSON.stringify(supers.filter(s => activeIds.includes(s.id)));
@@ -1242,15 +1345,12 @@
             }
         });
 
-        // OBS / 全画面ボタン
         document.getElementById('btn-obs').addEventListener('click', () => {
             const url = new URL(window.location.href); url.searchParams.set('obs', 'true'); window.open(url.toString(), '_blank', 'width=1920,height=1080');
         });
         document.getElementById('btn-fullscreen').addEventListener('click', () => {
-            document.body.classList.toggle('fullscreen-mode'); updateScale();
+            document.body.classList.toggle('fullscreen-mode'); window.updateScale();
         });
-        
-        // --- ここまで復旧 ---
 
         document.getElementById('btn-mode-super').addEventListener('click', () => {
             ensureSelection(); const activeSupers = getActiveSupers(); if (activeSupers.length === 0) return;
@@ -1298,7 +1398,7 @@
                 texts.forEach((el, i) => el.style.cssText = originalTextStyles[i]); matsAndBadges.forEach((el, i) => { if(originalShadows[i]) el.style.boxShadow = originalShadows[i]; else el.style.removeProperty('box-shadow'); });
                 layer1s.forEach((el, i) => { if(originalLayer1[i].filter) el.style.filter = originalLayer1[i].filter; else el.style.removeProperty('filter'); if(originalLayer1[i].opacity) el.style.opacity = originalLayer1[i].opacity; else el.style.removeProperty('opacity'); });
                 shines.forEach((el, i) => { if(originalShineStyles[i]) el.style.display = originalShineStyles[i]; else el.style.removeProperty('display'); });
-                document.body.classList.remove('exporting'); updateScale();
+                document.body.classList.remove('exporting'); window.updateScale();
                 if(prevActiveIds.length > 0) { activeIds = prevActiveIds; document.querySelectorAll('.super-item').forEach(el => { if (activeIds.includes(el.id)) { el.classList.add('active'); el.style.zIndex = 50; } }); updateExtSourceDOM(); updateUIFromData(); }
             }
         }
@@ -1312,8 +1412,8 @@
         window.addEventListener('load', () => { 
             initPresets(); 
             const container = document.getElementById('workspace-container'); if (container) workspaceContainerObserver.observe(container);
-            updateScale(); 
-            const isObsModeParam = document.body.classList.contains('obs-mode'); createSuper(initialData, isObsModeParam); 
+            window.updateScale(); 
+            createSuper(initialData, isObsMode); 
             saveHistory(); 
         });
     </script>
