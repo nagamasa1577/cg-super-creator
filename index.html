@@ -203,6 +203,15 @@
         </div>
     </div>
 
+    <!-- ★上限エラー画面（追加） -->
+    <div id="limit-error-screen" class="hidden fixed inset-0 bg-black items-center justify-center z-[9500]">
+        <div class="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-2xl w-96 text-center">
+            <h1 class="text-2xl font-black text-red-500 mb-4 tracking-widest">ACCESS DENIED</h1>
+            <p class="text-slate-300 text-sm mb-6">同時ログインの上限（2台）に達しています。<br>他の端末やタブを閉じてから再度お試しください。</p>
+            <button onclick="window.location.reload()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-colors tracking-widest shadow-lg">再試行</button>
+        </div>
+    </div>
+
     <!-- ★アプリ本体画面 -->
     <div id="app-screen" class="hidden relative w-full h-screen bg-[#1a1a1a]">
         <div id="main-content">
@@ -451,6 +460,8 @@
         window.showScreen = function(screenId) {
             document.getElementById('loading-screen').classList.add('hidden');
             document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('limit-error-screen').classList.add('hidden');
+            document.getElementById('limit-error-screen').classList.remove('flex');
             document.getElementById('app-screen').classList.add('hidden');
             
             if (screenId === 'app-screen') {
@@ -488,6 +499,13 @@
             const { collection, getDocs, setDoc, doc, deleteDoc } = window.firebaseModules;
             const sessionsRef = collection(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions');
             
+            // タブ固有のセッションIDを取得（リロード時は維持される）
+            let mySessionId = sessionStorage.getItem('cg_super_session_id');
+            if (!mySessionId) {
+                mySessionId = 'sess_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+                sessionStorage.setItem('cg_super_session_id', mySessionId);
+            }
+
             try {
                 const snap = await getDocs(sessionsRef);
                 const now = Date.now();
@@ -496,6 +514,9 @@
 
                 snap.forEach(d => {
                     const data = d.data();
+                    // 自分のセッションはカウントしない
+                    if (d.id === mySessionId) return;
+
                     if (now - data.updatedAt > 15000) {
                         cleanupPromises.push(deleteDoc(d.ref)); // 15秒以上更新がないものはゴミとして削除
                     } else {
@@ -505,15 +526,15 @@
 
                 await Promise.all(cleanupPromises);
 
-                if (activeCount >= 2) return false; // 制限オーバー
+                if (activeCount >= 2) return false; // 自分以外の有効セッションが2つ以上なら制限オーバー
 
                 // 自分のセッションを登録
-                const mySessionId = 'sess_' + Date.now() + '_' + Math.floor(Math.random()*1000);
                 const myDoc = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions', mySessionId);
                 await setDoc(myDoc, { updatedAt: Date.now() });
 
                 // 定期更新（5秒ごと）
-                setInterval(async () => {
+                if (window.sessionUpdateInterval) clearInterval(window.sessionUpdateInterval);
+                window.sessionUpdateInterval = setInterval(async () => {
                     try { await setDoc(myDoc, { updatedAt: Date.now() }, { merge: true }); } catch(e){}
                 }, 5000);
 
@@ -581,10 +602,8 @@
                         if (!isAdmin) {
                             const canLogin = await checkSessionLimit(user);
                             if (!canLogin) {
-                                await window.firebaseModules.signOut(auth);
-                                errEl.textContent = "同時ログインの上限（2台）に達しています。";
-                                errEl.classList.remove('hidden');
-                                window.showScreen('login-screen');
+                                // ログアウトはせず、このタブだけを専用のエラー画面で塞ぐ（他のタブを巻き込まない）
+                                window.showScreen('limit-error-screen');
                                 return;
                             }
                         }
