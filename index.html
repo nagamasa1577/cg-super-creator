@@ -155,6 +155,8 @@
         body.obs-mode #sidebar { display: none !important; }
         body.obs-mode #preset-area { display: none !important; }
         body.obs-mode #main-content { width: 100vw !important; height: 100vh !important; background: transparent !important; }
+        /* ★OBSモードで背景を完全に透明化（修正部分） */
+        body.obs-mode #app-screen { background: transparent !important; }
         body.obs-mode #workspace-container { padding: 0 !important; align-items: flex-start !important; justify-content: flex-start !important; background: transparent !important; }
         body.obs-mode #workspace { border: none !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; overflow: hidden !important; }
         body.obs-mode, body.obs-mode .checkerboard { background: transparent !important; background-image: none !important; }
@@ -178,18 +180,18 @@
 
     <!-- ★ローディング画面 -->
     <div id="loading-screen" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-[10000]">
-        <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-yellow-500 mb-4"></div>
+        <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-500 mb-4"></div>
         <div class="text-slate-500 font-bold tracking-widest">LOADING...</div>
     </div>
 
-    <!-- ★ログイン画面（Reactデザインを踏襲） -->
+    <!-- ★ログイン画面 -->
     <div id="login-screen" class="hidden fixed inset-0 bg-black flex items-center justify-center z-[9000]">
         <div class="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-2xl w-96">
             <h1 class="text-2xl font-black text-white mb-6 text-center tracking-widest">SUPER CREATOR</h1>
             <form id="login-form" class="flex flex-col gap-5">
                 <div>
                     <label class="block text-slate-400 text-xs font-bold mb-2 tracking-wider">EMAIL (ID)</label>
-                    <input type="email" id="login-email" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors" placeholder="abctv1@abctv.com" required>
+                    <input type="email" id="login-email" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors" placeholder="user@example.com" required>
                 </div>
                 <div>
                     <label class="block text-slate-400 text-xs font-bold mb-2 tracking-wider">PASSWORD</label>
@@ -247,7 +249,6 @@
         <div id="sidebar" class="shadow-xl">
             <h1 class="text-lg font-bold mb-1 text-center text-blue-400 tracking-wider">SUPER CREATOR</h1>
 
-            <!-- ★ログイン情報とログアウトボタン -->
             <div class="mb-1.5 p-1.5 bg-slate-900 rounded border border-slate-700 shadow-inner flex items-center justify-between">
                 <div class="flex items-center gap-1.5 overflow-hidden">
                     <div class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_#22c55e] flex-shrink-0"></div>
@@ -272,8 +273,8 @@
                     <span id="cloud-sync-badge" class="hidden px-1.5 py-0.5 rounded text-[8px] bg-blue-600 text-white font-bold">待機中</span>
                 </div>
                 <div class="flex items-center gap-1">
-                    <input type="text" id="input-sync-room" class="flex-1 bg-gray-900 border border-gray-600 text-white text-[10px] p-1 rounded focus:border-blue-500 outline-none" placeholder="ルーム名 (例: room1)">
-                    <button id="btn-start-sync" class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-bold rounded transition shadow">接続</button>
+                    <input type="text" id="input-sync-room" class="flex-1 bg-gray-900 border border-gray-600 text-white text-[10px] p-1 rounded focus:border-blue-500 outline-none" placeholder="ルーム名 (例: room1)" disabled>
+                    <button id="btn-start-sync" class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-bold rounded transition shadow hidden">接続</button>
                 </div>
                 <div id="obs-url-container" class="hidden mt-1 pt-1 border-t border-gray-700">
                     <p class="text-[8px] text-gray-400 mb-0.5">OBS入力用URL (クリックでコピー)</p>
@@ -464,8 +465,6 @@
 
         // ★テストアカウントの期限判定 (7日間)
         async function checkAccountStatus(user) {
-            if (!user.email.includes('test')) return true; // 管理者は無制限
-
             const { doc, getDoc, setDoc } = window.firebaseModules;
             const userRef = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'account', 'status');
             
@@ -478,22 +477,57 @@
                     const data = snap.data();
                     const now = Date.now();
                     const days7 = 7 * 24 * 60 * 60 * 1000;
-                    if (now - data.firstLoginAt > days7) return false; // 期限切れ
+                    if (now - data.firstLoginAt > days7) return false; 
                     return true;
                 }
-            } catch (e) {
-                console.error("Account check failed:", e);
-                return false;
-            }
+            } catch (e) { return false; }
+        }
+
+        // ★同時ログイン2台制限のチェック
+        async function checkSessionLimit(user) {
+            const { collection, getDocs, setDoc, doc, deleteDoc } = window.firebaseModules;
+            const sessionsRef = collection(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions');
+            
+            try {
+                const snap = await getDocs(sessionsRef);
+                const now = Date.now();
+                let activeCount = 0;
+                const cleanupPromises = [];
+
+                snap.forEach(d => {
+                    const data = d.data();
+                    if (now - data.updatedAt > 15000) {
+                        cleanupPromises.push(deleteDoc(d.ref)); // 15秒以上更新がないものはゴミとして削除
+                    } else {
+                        activeCount++;
+                    }
+                });
+
+                await Promise.all(cleanupPromises);
+
+                if (activeCount >= 2) return false; // 制限オーバー
+
+                // 自分のセッションを登録
+                const mySessionId = 'sess_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+                const myDoc = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions', mySessionId);
+                await setDoc(myDoc, { updatedAt: Date.now() });
+
+                // 定期更新（5秒ごと）
+                setInterval(async () => {
+                    try { await setDoc(myDoc, { updatedAt: Date.now() }, { merge: true }); } catch(e){}
+                }, 5000);
+
+                return true;
+            } catch (e) { return true; } // エラー時は一応通す
         }
 
         async function initFirebase() {
             try {
                 const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
                 const { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
-                const { getFirestore, doc, getDoc, setDoc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                const { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
 
-                window.firebaseModules = { doc, getDoc, setDoc, onSnapshot, signInWithEmailAndPassword, signOut };
+                window.firebaseModules = { doc, getDoc, setDoc, onSnapshot, signInWithEmailAndPassword, signOut, collection, getDocs, deleteDoc };
 
                 const defaultFirebaseConfig = {
                     apiKey: "AIzaSyAZjLA9gSfjMH6ydareUbw6KaCADSZ7mag",
@@ -514,7 +548,6 @@
                 let isObsMode = document.body.classList.contains('obs-mode') || new URLSearchParams(window.location.search).get('obs') === 'true';
 
                 onAuthStateChanged(auth, async (user) => {
-                    // ★OBSモードは裏口で自動匿名ログイン
                     if (isObsMode) {
                         if (!user) {
                             await signInAnonymously(auth);
@@ -525,27 +558,51 @@
                         return;
                     }
 
-                    // ★通常ログインフロー
                     if (user && !user.isAnonymous) {
-                        const isAllowed = await checkAccountStatus(user);
-                        if (isAllowed) {
-                            document.getElementById('user-email-display').textContent = user.email;
-                            window.showScreen('app-screen');
-                            
-                            // 自動で同期ルーム名にメールアドレスの@前を設定
-                            if (!document.getElementById('input-sync-room').value) {
-                                document.getElementById('input-sync-room').value = user.email.split('@')[0];
+                        const errEl = document.getElementById('login-error');
+                        errEl.classList.add('hidden');
+                        
+                        const isAdmin = user.email === 'abctv1@abctv.com';
+                        const isTest = user.email.includes('test');
+
+                        // 1. テストアカウントの期限チェック
+                        if (isTest) {
+                            const isAllowed = await checkAccountStatus(user);
+                            if (!isAllowed) {
+                                await window.firebaseModules.signOut(auth);
+                                errEl.textContent = "試用期間（7日間）が終了しました。";
+                                errEl.classList.remove('hidden');
+                                window.showScreen('login-screen');
+                                return;
                             }
-                            if (window.syncRoomId) startSyncProcess();
-                        } else {
-                            await window.firebaseModules.signOut(auth);
-                            const errEl = document.getElementById('login-error');
-                            errEl.textContent = "期限切れです";
-                            errEl.classList.remove('hidden');
-                            window.showScreen('login-screen');
                         }
+
+                        // 2. 2台制限チェック (管理者は免除)
+                        if (!isAdmin) {
+                            const canLogin = await checkSessionLimit(user);
+                            if (!canLogin) {
+                                await window.firebaseModules.signOut(auth);
+                                errEl.textContent = "同時ログインの上限（2台）に達しています。";
+                                errEl.classList.remove('hidden');
+                                window.showScreen('login-screen');
+                                return;
+                            }
+                        }
+
+                        // 3. ログイン成功処理：個室の完全ロック（URL強制書き換え）
+                        const userId = user.email.split('@')[0];
+                        document.getElementById('user-email-display').textContent = user.email;
+                        
+                        window.syncRoomId = userId;
+                        document.getElementById('input-sync-room').value = userId;
+                        
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('room', userId);
+                        window.history.replaceState({}, '', url);
+
+                        window.showScreen('app-screen');
+                        startSyncProcess();
                     } else {
-                        // 未ログイン
                         window.showScreen('login-screen');
                     }
                 });
@@ -555,7 +612,6 @@
     </script>
 
     <script>
-        // ★ログイン・ログアウトのイベント処理
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('login-email').value;
@@ -579,7 +635,6 @@
             window.location.reload();
         });
 
-        // --- 以下、既存のアプリロジック ---
         let extSource = { url: '', x: 0, y: 0, w: 800, h: 450, zIndex: 5 };
         let supers = [];
         let activeIds = []; 
@@ -662,8 +717,12 @@
                 const badge = document.getElementById('cloud-sync-badge'); badge.classList.remove('hidden'); badge.textContent = "同期ON";
                 const obsUrlContainer = document.getElementById('obs-url-container'); const obsUrlInput = document.getElementById('input-obs-url');
                 obsUrlContainer.classList.remove('hidden');
-                const obsUrl = new URL(window.location.href); obsUrl.searchParams.set('room', window.syncRoomId); obsUrl.searchParams.set('obs', 'true');
+                
+                const obsUrl = new URL(window.location.href); 
+                obsUrl.searchParams.set('room', window.syncRoomId); 
+                obsUrl.searchParams.set('obs', 'true');
                 obsUrlInput.value = obsUrl.toString();
+                
                 obsUrlInput.onclick = () => { obsUrlInput.select(); document.execCommand('copy'); const originalText = obsUrlInput.value; obsUrlInput.value = "コピーしました！"; setTimeout(() => obsUrlInput.value = originalText, 1000); };
                 syncToCloud();
             }
@@ -689,13 +748,6 @@
                 }
             }, 500);
         }
-
-        document.getElementById('btn-start-sync').addEventListener('click', () => {
-            const roomName = document.getElementById('input-sync-room').value.trim();
-            if (!roomName) return alert('ルーム名を入力してください');
-            const url = new URL(window.location.href); url.searchParams.set('room', roomName); window.history.pushState({}, '', url); window.syncRoomId = roomName;
-            if (!window.firebaseDb) alert("Firebaseが初期化されていません。"); else startSyncProcess();
-        });
 
         window.updateScale = function() {
             const container = document.getElementById('workspace-container'); if (!container) return;
