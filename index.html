@@ -1552,8 +1552,18 @@
             // APIキーを保存
             localStorage.setItem('cg_super_gemini_api_key', apiKey);
 
-            const activeSupers = getActiveSupers();
-            if (activeSupers.length === 0) return alert('適用するスーパー（またはフタ）を選択してください。');
+            let activeSupers = getActiveSupers();
+            
+            // ★ 選択されていない場合の自動補完（追加）
+            if (activeSupers.length === 0) {
+                const targetData = getDisplaySuper();
+                if (targetData) {
+                    selectSuper(targetData.id); // 画面上のスーパーを自動的に選択状態にする
+                    activeSupers = [targetData];
+                } else {
+                    return alert('適用するスーパーがありません。キャンバスにスーパーを配置してください。');
+                }
+            }
 
             const isFuta = activeSupers[0].isFuta;
 
