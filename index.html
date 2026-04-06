@@ -4,13 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>サイドスーパー職人 - クラウド同期・完全独立版</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- html2canvas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <!-- FileSaver -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     
     <style>
@@ -179,13 +175,11 @@
 </head>
 <body class="text-sm bg-black m-0 overflow-hidden font-sans">
 
-    <!-- ★ローディング画面 -->
     <div id="loading-screen" class="fixed inset-0 bg-black flex flex-col items-center justify-center z-[10000]">
         <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-500 mb-4"></div>
         <div class="text-slate-500 font-bold tracking-widest">LOADING...</div>
     </div>
 
-    <!-- ★ログイン画面 -->
     <div id="login-screen" class="hidden fixed inset-0 bg-black flex items-center justify-center z-[9000]">
         <div class="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-2xl w-96">
             <h1 class="text-2xl font-black text-white mb-6 text-center tracking-widest">SUPER CREATOR</h1>
@@ -204,7 +198,6 @@
         </div>
     </div>
 
-    <!-- ★上限エラー画面 -->
     <div id="limit-error-screen" class="hidden fixed inset-0 bg-black items-center justify-center z-[9500]">
         <div class="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-2xl w-96 text-center">
             <h1 class="text-2xl font-black text-red-500 mb-4 tracking-widest">ACCESS DENIED</h1>
@@ -213,7 +206,6 @@
         </div>
     </div>
 
-    <!-- ★アプリ本体画面 -->
     <div id="app-screen" class="hidden relative w-full h-screen bg-[#1a1a1a]">
         <div id="main-content">
             <div id="workspace-container" class="checkerboard">
@@ -1526,6 +1518,20 @@
         function createTGA(canvas) { const ctx = canvas.getContext('2d'); const width = canvas.width; const height = canvas.height; const data = ctx.getImageData(0, 0, width, height).data; const buffer = new ArrayBuffer(18 + data.length); const view = new DataView(buffer); const uint8View = new Uint8Array(buffer); view.setUint8(2, 2); view.setUint16(12, width, true); view.setUint16(14, height, true); view.setUint8(16, 32); view.setUint8(17, 0x20); let offset = 18; for (let i = 0; i < data.length; i += 4) { uint8View[offset++] = data[i + 2]; uint8View[offset++] = data[i + 1]; uint8View[offset++] = data[i]; uint8View[offset++] = data[i + 3]; } return uint8View; }
 
         document.getElementById('btn-export').addEventListener('click', () => { runExport(async () => { document.getElementById('progress-modal').style.display = 'flex'; const zip = new JSZip(); const fps = 30; const totalFrames = fps * 6; for (let i = 0; i < totalFrames; i++) { const p = i / totalFrames; workspace.style.setProperty('--anim-p', p); workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(p * Math.PI * 12)); await new Promise(r => setTimeout(r, 20)); const canvas = await html2canvas(workspace, { backgroundColor: null, scale: 1, logging: false, width: canvasWidth, height: canvasHeight, x: 0, y: 0 }); zip.file(`super_frame_${String(i).padStart(3, '0')}.tga`, createTGA(canvas), { binary: true, compression: "STORE" }); document.getElementById('progress-bar').style.width = Math.round(((i + 1) / totalFrames) * 100) + '%'; document.getElementById('progress-text').textContent = `${i + 1} / ${totalFrames} Frames`; } document.getElementById('progress-text').textContent = "ZIPを生成中..."; await new Promise(r => setTimeout(r, 100)); saveAs(await zip.generateAsync({type:"blob", compression: "STORE"}), "super_cg_sequence.zip"); document.getElementById('progress-modal').style.display = 'none'; document.getElementById('progress-bar').style.width = '0%'; }); });
+
+        // ★ ここにアニメーションループを追加しました ★
+        function animationLoop() {
+            if (isMoving) {
+                const now = Date.now();
+                // 3秒で1周するループ
+                const p = (now % 3000) / 3000;
+                workspace.style.setProperty('--anim-p', p);
+                // LIVEバッジの点滅
+                workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(now / 150));
+            }
+            requestAnimationFrame(animationLoop);
+        }
+        animationLoop();
 
         window.addEventListener('load', () => { 
             initPresets(); 
