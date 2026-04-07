@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>サイドスーパー職人 - クラウド同期・完全独立版</title>
+    <title>SuperMAN</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -75,10 +75,13 @@
         .image-item.active-img .img-resize-handle { display: block; }
 
         .mat { position: absolute; left: var(--mx, 0%); top: var(--my, 0%); width: var(--mw, 100%); height: var(--mh, 100%); border-radius: 8px; box-shadow: 4px 4px 15px rgba(0,0,0,0.6); }
-        .text-line { font-weight: 900; white-space: nowrap; letter-spacing: 0.05em; line-height: 1.1; }
+        .text-line { font-weight: 900; white-space: nowrap; letter-spacing: 0.05em; line-height: 1.1; cursor: move; pointer-events: auto; position: relative; }
 
-        .super-item.futa-mode .text-line1 { position: absolute !important; top: 45%; left: 0; width: 100%; text-align: center; transform: translateY(-50%); margin: 0 !important; text-shadow: 0 0 20px var(--acc1), 3px 5px 5px rgba(0,0,0,0.9) !important; letter-spacing: 0.1em; }
-        .super-item.futa-mode .text-line2 { position: absolute !important; bottom: 15%; left: 0; width: 100%; text-align: center; margin: 0 !important; letter-spacing: 0.15em; }
+        .super-item.futa-mode .text-line1 { position: absolute !important; top: 45%; left: 0; width: 100%; text-align: center; transform: translateY(-50%) translate(var(--tx, 0px), var(--ty, 0px)); margin: 0 !important; text-shadow: 0 0 20px var(--acc1), 3px 5px 5px rgba(0,0,0,0.9) !important; letter-spacing: 0.1em; }
+        .super-item.futa-mode .text-line2 { position: absolute !important; bottom: 15%; left: 0; width: 100%; text-align: center; transform: translate(var(--tx, 0px), var(--ty, 0px)); margin: 0 !important; letter-spacing: 0.15em; }
+
+        .content-area .text-line1 { transform: translate(var(--tx, 0px), var(--ty, 0px)); }
+        .content-area .text-line2 { transform: translate(var(--tx, 0px), var(--ty, 0px)); }
 
         .style-1 .mat.layer1 { background: #000; transform: skewX(-20deg) scale(1.08) translate(15px, 10px); filter: blur(2px); }
         .style-1 .mat.layer2 { background: var(--acc2); transform: skewX(-20deg) scale(1.04) translate(-10px, -5px); }
@@ -445,7 +448,7 @@
 
                 <div class="bg-gray-800 p-1 rounded border border-gray-600">
                     <div class="flex justify-between items-center cursor-pointer" id="toggle-opacity-panel">
-                        <label class="text-[9px] text-gray-300 font-bold cursor-pointer">透明度</label>
+                        <label class="text-[9px] text-gray-300 font-bold cursor-pointer">マットの透明度調整</label>
                         <span class="text-[9px] text-gray-400" id="opacity-icon">▼</span>
                     </div>
                     <div id="opacity-panel" class="hidden flex-col gap-1 mt-1">
@@ -725,7 +728,8 @@
             inAction: 0, layersOrder: null, groupId: null, 
             matRects: { 1: {x: 0, y: 0, w: 100, h: 100}, 2: {x: 0, y: 0, w: 100, h: 100}, 3: {x: 0, y: 0, w: 100, h: 100}, 4: {x: 0, y: 0, w: 100, h: 100} },
             matOpacities: { ...defaultOpacities[1] },
-            customTexts: [], images: [], sideCustomTexts: [], sideImages: [], futaCustomTexts: [], futaImages: [], isFuta: false
+            customTexts: [], images: [], sideCustomTexts: [], sideImages: [], futaCustomTexts: [], futaImages: [], isFuta: false,
+            text1X: 0, text1Y: 0, text2X: 0, text2Y: 0, futaText1X: 0, futaText1Y: 0, futaText2X: 0, futaText2Y: 0
         };
 
         const workspace = document.getElementById('workspace');
@@ -1093,6 +1097,8 @@
             if (!newData.futaText1) { newData.futaText1 = 'タイトル'; newData.futaSize1 = 15; } if (!newData.futaText2) { newData.futaText2 = '2026年4月1日(水) 12時スタート'; newData.futaSize2 = 6; }
             if (!newData.colorGrid) newData.colorGrid = '#ffffff'; if (!newData.colorFutaBg) newData.colorFutaBg = '#4ce0ff';
             if (!newData.images) newData.images = []; if (!newData.sideCustomTexts) newData.sideCustomTexts = []; if (!newData.sideImages) newData.sideImages = []; if (!newData.futaCustomTexts) newData.futaCustomTexts = []; if (!newData.futaImages) newData.futaImages = [];
+            if (newData.text1X === undefined) newData.text1X = 0; if (newData.text1Y === undefined) newData.text1Y = 0; if (newData.text2X === undefined) newData.text2X = 0; if (newData.text2Y === undefined) newData.text2Y = 0;
+            if (newData.futaText1X === undefined) newData.futaText1X = 0; if (newData.futaText1Y === undefined) newData.futaText1Y = 0; if (newData.futaText2X === undefined) newData.futaText2X = 0; if (newData.futaText2Y === undefined) newData.futaText2Y = 0;
             if (newData.groupId === undefined) newData.groupId = null;
             supers.push(newData); createSuperDOM(newData); if (!noSelect) selectSuper(id); return id;
         }
@@ -1141,7 +1147,8 @@
 
             let mainTextLayer = flatContainer.querySelector('.layer-mainText'); if (!mainTextLayer) { mainTextLayer = document.createElement('div'); mainTextLayer.className = 'anim-layer layer-mainText'; flatContainer.appendChild(mainTextLayer); }
             const t1Size = 20 + (data.isFuta ? data.futaSize1 : data.size1) * 6; const t2Size = 20 + (data.isFuta ? data.futaSize2 : data.size2) * 6; const t1Text = data.isFuta ? data.futaText1 : data.text1; const t2Text = data.isFuta ? data.futaText2 : data.text2; const showT1 = data.isFuta ? data.futaShowText1 : data.showText1; const showT2 = data.isFuta ? data.futaShowText2 : data.showText2;
-            mainTextLayer.innerHTML = `<div class="content-area"><div class="text-line1 text-line" style="font-size: ${t1Size}px; display: ${showT1 ? 'block' : 'none'};">${escapeHTML(t1Text)}</div><div class="text-line2 text-line ${showT1 ? 'mt-2' : ''}" style="font-size: ${t2Size}px; display: ${showT2 ? 'block' : 'none'};">${escapeHTML(t2Text)}</div></div>`;
+            const t1X = data.isFuta ? (data.futaText1X || 0) : (data.text1X || 0); const t1Y = data.isFuta ? (data.futaText1Y || 0) : (data.text1Y || 0); const t2X = data.isFuta ? (data.futaText2X || 0) : (data.text2X || 0); const t2Y = data.isFuta ? (data.futaText2Y || 0) : (data.text2Y || 0);
+            mainTextLayer.innerHTML = `<div class="content-area"><div class="text-line1 text-line" style="font-size: ${t1Size}px; display: ${showT1 ? 'block' : 'none'}; --tx: ${t1X}px; --ty: ${t1Y}px;">${escapeHTML(t1Text)}</div><div class="text-line2 text-line ${showT1 ? 'mt-2' : ''}" style="font-size: ${t2Size}px; display: ${showT2 ? 'block' : 'none'}; --tx: ${t2X}px; --ty: ${t2Y}px;">${escapeHTML(t2Text)}</div></div>`;
 
             data.customTexts.forEach(ct => {
                 let ctLayer = flatContainer.querySelector('.layer-ct_' + ct.id); if (!ctLayer) { ctLayer = document.createElement('div'); ctLayer.className = 'anim-layer layer-ct_' + ct.id; flatContainer.appendChild(ctLayer); }
@@ -1197,6 +1204,8 @@
             else if (e.target.closest('.live-badge')) { const data = supers.find(s => s.id === id); dragType = 'live'; startObjX = data.liveX !== undefined ? data.liveX : -20; startObjY = data.liveY !== undefined ? data.liveY : -20; dragTargetId = id;}
             else if (e.target.classList.contains('m-handle')) { const data = supers.find(s => s.id === id); dragType = 'mat'; dragTargetId = Array.from(e.target.classList).find(c => ['nw','n','ne','w','e','sw','s','se'].includes(c)); const layer = document.querySelector('input[name="mat-edit"]:checked').value; const rect = data.matRects[layer]; startObjX = (rect.x / 100) * data.w; startObjY = (rect.y / 100) * data.h; startObjW = (rect.w / 100) * data.w; startObjH = (rect.h / 100) * data.h; }
             else if (e.target.closest('.custom-text-item')) { const data = supers.find(s => s.id === id); dragType = 'ct'; dragTargetId = e.target.closest('.custom-text-item').dataset.ctId; const ct = data.customTexts.find(t => t.id === dragTargetId); startObjX = ct.x; startObjY = ct.y; updateSuperDOM(data.id); renderCustomTextUI(); }
+            else if (e.target.closest('.text-line1')) { const data = supers.find(s => s.id === id); dragType = 'mainText1'; startObjX = data.isFuta ? (data.futaText1X || 0) : (data.text1X || 0); startObjY = data.isFuta ? (data.futaText1Y || 0) : (data.text1Y || 0); dragTargetId = id; }
+            else if (e.target.closest('.text-line2')) { const data = supers.find(s => s.id === id); dragType = 'mainText2'; startObjX = data.isFuta ? (data.futaText2X || 0) : (data.text2X || 0); startObjY = data.isFuta ? (data.futaText2Y || 0) : (data.text2Y || 0); dragTargetId = id; }
             else if (e.target.classList.contains('img-resize-handle')) { const data = supers.find(s => s.id === id); dragType = 'img-resize'; dragTargetId = e.target.closest('.image-item').dataset.imgId; const img = data.images.find(i => i.id === dragTargetId); startObjW = img.w; startObjH = img.h; updateSuperDOM(data.id); renderImageUI(); }
             else if (e.target.closest('.image-item')) { const data = supers.find(s => s.id === id); dragType = 'image'; dragTargetId = e.target.closest('.image-item').dataset.imgId; const img = data.images.find(i => i.id === dragTargetId); startObjX = img.x; startObjY = img.y; updateSuperDOM(data.id); renderImageUI(); }
             else { 
@@ -1231,6 +1240,8 @@
             else if (dragType === 'live-resize') { const scaleDiff = (dx + dy) / 100; data.liveScale = Math.max(0.3, Math.min(4, startObjW + scaleDiff)); ui.liveScale.value = data.liveScale; }
             else if (dragType === 'mat') { const layer = document.querySelector('input[name="mat-edit"]:checked').value; let newX = startObjX, newY = startObjY, newW = startObjW, newH = startObjH; const h = dragTargetId; if (h.includes('e')) newW += dx; if (h.includes('w')) { newX += dx; newW -= dx; } if (h.includes('s')) newH += dy; if (h.includes('n')) { newY += dy; newH -= dy; } data.matRects[layer] = { x: (newX / data.w) * 100, y: (newY / data.h) * 100, w: (newW / data.w) * 100, h: (newH / data.h) * 100 }; } 
             else if (dragType === 'ct') { const ct = data.customTexts.find(t => t.id === dragTargetId); if(ct) { ct.x = startObjX + dx; ct.y = startObjY + dy; } }
+            else if (dragType === 'mainText1') { if (data.isFuta) { data.futaText1X = startObjX + dx; data.futaText1Y = startObjY + dy; } else { data.text1X = startObjX + dx; data.text1Y = startObjY + dy; } }
+            else if (dragType === 'mainText2') { if (data.isFuta) { data.futaText2X = startObjX + dx; data.futaText2Y = startObjY + dy; } else { data.text2X = startObjX + dx; data.text2Y = startObjY + dy; } }
             else if (dragType === 'image') { const img = data.images.find(i => i.id === dragTargetId); if(img) { img.x = startObjX + dx; img.y = startObjY + dy; } }
             else if (dragType === 'img-resize') { const img = data.images.find(i => i.id === dragTargetId); if(img) { const ratio = startObjW / startObjH; img.w = Math.max(20, startObjW + dx); img.h = img.w / ratio; } }
             updateSuperDOM(data.id);
