@@ -180,6 +180,15 @@
 
         /* 送出専用パネルのスタイル */
         /* Tailwindクラスに移行しました */
+        
+        /* ★ スマホ用 送出専用モード2画面構成スタイル */
+        @media (max-width: 768px) {
+            body.playout-mode #sidebar { display: none !important; }
+            body.playout-mode #preset-area { display: none !important; }
+            body.playout-mode #main-content { width: 100vw !important; height: 45vh !important; }
+            body.playout-mode #workspace-container { height: 100% !important; padding: 10px !important; }
+            body.playout-mode #playout-panel { height: 55vh !important; max-height: 55vh !important; width: 100vw !important; padding-bottom: 20px; }
+        }
     </style>
 </head>
 <body class="text-sm bg-black m-0 overflow-hidden font-sans">
@@ -1546,15 +1555,19 @@
 
         btnOpenPlayout.addEventListener('click', () => {
             isPlayoutMode = true;
+            document.body.classList.add('playout-mode'); // ★ クラス付与でスマホレイアウト変形
             playoutPanel.classList.remove('translate-y-full');
             poNumberInput.focus();
+            setTimeout(window.updateScale, 100); // 画面サイズ変更に合わせてスケール再計算
         });
 
         btnClosePlayout.addEventListener('click', () => {
             isPlayoutMode = false;
+            document.body.classList.remove('playout-mode'); // ★ レイアウトを元に戻す
             playoutPanel.classList.add('translate-y-full');
             // パネルを閉じた瞬間に、現在のキャンバスの状態をOBSに同期し直す
             syncToCloud();
+            setTimeout(window.updateScale, 100); // スケール再計算
         });
 
         poTabHome.addEventListener('click', () => {
@@ -1594,17 +1607,9 @@
             let foundIndex = -1;
             let foundDisplayName = '';
             
-            // 誤爆防止＆テキスト1行目も検索対象にする
+            // ★ 誤爆防止：カスタム名のみを検索対象にする
             for (let i = 0; i < 30; i++) {
                 let targetText = names[i] ? names[i] : '';
-                
-                // カスタム名がない場合は、テキスト1行目をチェック
-                if (!targetText && presetData[i]) {
-                    const sData = Array.isArray(presetData[i]) ? presetData[i][0] : (presetData[i].supers ? presetData[i].supers[0] : null);
-                    if (sData) {
-                        targetText = sData.isFuta ? sData.futaText1 : sData.text1;
-                    }
-                }
 
                 if (targetText) {
                     const halfWidthText = toHalfWidthDigit(targetText);
