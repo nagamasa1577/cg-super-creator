@@ -9,6 +9,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
     
     <style>
         :root { --anim-p: 0; --live-a: 1; }
@@ -1409,7 +1411,7 @@
         });
 
         // ==========================================
-        // ★ QRコード生成ロジック
+        // ★ QRコード生成ロジック (ポップ＆PNG変換版)
         // ==========================================
         document.getElementById('btn-add-qr').addEventListener('click', () => {
             ensureSelection(); const data = getActiveSuper(); 
@@ -1423,15 +1425,54 @@
             btn.textContent = '生成中...';
             btn.disabled = true;
 
-            const tempDiv = document.createElement('div');
-            new QRCode(tempDiv, {
-                text: url,
+            // スマホアイコンのBase64データ（外部通信エラーを防ぐため直接埋め込み）
+            const phoneIconBase64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiPjxyZWN0IHg9IjUiIHk9IjIiIHdpZHRoPSIxNCIgaGVpZ2h0PSIyMCIgcng9IjIiIGZpbGw9IiMzMzMzMzMiLz48cmVjdCB4PSI3IiB5PSI0IiB3aWR0aD0iMTAiIGhlaWdodD0iMTQiIGZpbGw9IiNmZmZmZmYiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjIwIiByPSIxIiBmaWxsPSIjZmZmZmZmIi8+PC9zdmc+";
+
+            // 高機能ライブラリでポップなQRコードをデザイン
+            const qrCode = new QRCodeStyling({
                 width: 256,
                 height: 256,
-                colorDark : "#000000",
-                colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.H
+                data: url,
+                image: phoneIconBase64,
+                dotsOptions: {
+                    color: data.colorMain, // スーパーのメインカラーに連動
+                    type: "rounded"        // 丸いドット
+                },
+                cornersSquareOptions: {
+                    color: data.colorMain,
+                    type: "extra-rounded"  // 角の四角も丸く
+                },
+                backgroundOptions: {
+                    color: "#ffffff",      // 読み取りやすく白背景
+                },
+                imageOptions: {
+                    crossOrigin: "anonymous",
+                    margin: 6              // アイコン周りの余白
+                }
             });
+
+            // TGA/PNG書き出しバグを防ぐため、一度純粋なPNG画像データに変換してからキャンバスに置く
+            qrCode.getRawData("png").then((buffer) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = reader.result;
+                    imgCounter++; const newId = 'img_' + imgCounter;
+                    // QRコードを配置 (120x120の正方形)
+                    data.images.push({ id: newId, url: dataUrl, x: 50, y: 50, w: 120, h: 120, opacity: 100 });
+                    data.layersOrder.unshift('image_' + newId);
+                    updateSuperDOM(data.id); updateUIFromData(); saveHistory();
+                    
+                    document.getElementById('input-qr-url').value = ''; // 入力欄をクリア
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                };
+                reader.readAsDataURL(new Blob([buffer]));
+            }).catch(err => {
+                alert('QRコードの生成に失敗しました。');
+                btn.textContent = originalText;
+                btn.disabled = false;
+            });
+        });
 
             // ライブラリのCanvas描画完了を少し待ってから画像として取り込む
             setTimeout(() => {
