@@ -175,8 +175,6 @@
         body.fullscreen-mode, body.fullscreen-mode .checkerboard { background: #00FF00 !important; background-image: none !important; }
         body.fullscreen-mode #safety-guide { display: none !important; }
         body.fullscreen-mode #playout-panel { width: 100vw !important; }
-        
-        #progress-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; }
 
         /* ★ スマホ用 送出専用モード2画面構成スタイル */
         @media (max-width: 768px) {
@@ -281,6 +279,14 @@
                 </button>
             </div>
         </div>
+    </div>
+
+    <div id="progress-modal" class="hidden fixed inset-0 bg-black/90 z-[9999] flex-col items-center justify-center">
+        <div class="text-white font-bold mb-4 text-xl tracking-widest">TGA連番 書き出し中...</div>
+        <div class="w-96 bg-gray-800 rounded-full h-4 mb-2 border border-gray-600 overflow-hidden">
+            <div id="progress-bar" class="bg-gradient-to-r from-green-400 to-blue-500 h-full rounded-full transition-all duration-200" style="width: 0%"></div>
+        </div>
+        <div id="progress-text" class="text-gray-300 text-sm font-bold mt-2">0 / 0 Frames</div>
     </div>
 
     <div id="app-screen" class="hidden relative w-full h-screen bg-[#1a1a1a]">
@@ -1538,7 +1544,7 @@
 
         btnOpenPlayout.addEventListener('click', () => {
             isPlayoutMode = true;
-            document.body.classList.add('playout-mode'); // ★ クラス付与でスマホレイアウト変形
+            document.body.classList.add('playout-mode'); 
             playoutPanel.classList.remove('translate-y-full');
             poNumberInput.focus();
             setTimeout(window.updateScale, 100);
@@ -1546,9 +1552,9 @@
 
         btnClosePlayout.addEventListener('click', () => {
             isPlayoutMode = false;
-            document.body.classList.remove('playout-mode'); // ★ レイアウトを元に戻す
+            document.body.classList.remove('playout-mode'); 
             playoutPanel.classList.add('translate-y-full');
-            syncToCloud(); // パネルを閉じた瞬間に現在のキャンバス状態をOBSに同期し直す
+            syncToCloud();
             setTimeout(window.updateScale, 100);
         });
 
@@ -1566,7 +1572,6 @@
             poNumberInput.focus();
         });
 
-        // 全角数字を半角数字に変換する関数
         function toHalfWidthDigit(str) {
             if (!str) return '';
             return str.replace(/[０-９]/g, function(s) {
@@ -1589,10 +1594,8 @@
             let foundIndex = -1;
             let foundDisplayName = '';
             
-            // 誤爆防止：カスタム名のみを検索対象にする
             for (let i = 0; i < 30; i++) {
                 let targetText = names[i] ? names[i] : '';
-
                 if (targetText) {
                     const halfWidthText = toHalfWidthDigit(targetText);
                     const match = halfWidthText.match(/^(\d+)/);
@@ -1613,7 +1616,6 @@
                 poStatusMsg.textContent = `✅ プレビュー表示中: ${foundDisplayName}`;
                 poStatusMsg.className = 'text-sm md:text-base font-bold text-green-400 h-6 mt-1 truncate';
                 
-                // プレビュー用にローカルでINアクションを再生（OBSには飛ばない）
                 supers.forEach(data => { if(data.inAction > 0) playInAction(data.id, data.inAction); });
             } else {
                 poStatusMsg.textContent = `❌ 背番号 ${rawNumberStr} は未登録です`;
@@ -1634,7 +1636,13 @@
             supers.forEach(data => { if(data.inAction > 0) { actions.push({ id: data.id, type: data.inAction }); } });
             
             if (actions.length > 0) {
+                // ★ OBSへ送信と同時に、手元のプレビューでもINアクションを再生
                 syncToCloud({ timestamp: Date.now(), actions: actions }, true);
+                requestAnimationFrame(() => {
+                    supers.forEach(data => {
+                        if(data.inAction > 0) playInAction(data.id, data.inAction);
+                    });
+                });
             } else {
                 syncToCloud(null, true);
             }
