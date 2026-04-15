@@ -1408,7 +1408,7 @@
             reader.readAsDataURL(file); e.target.value = '';
         });
 
-        // ==========================================
+// ==========================================
         // ★ QRコード生成ロジック (ポップ＆PNG変換版)
         // ==========================================
         document.getElementById('btn-add-qr').addEventListener('click', () => {
@@ -1464,7 +1464,8 @@
                     btn.textContent = originalText;
                     btn.disabled = false;
                 };
-                reader.readAsDataURL(new Blob([buffer]));
+                // ★ 修正箇所：Blobに「image/png」というMIMEタイプ（名札）を明記する！
+                reader.readAsDataURL(new Blob([buffer], { type: "image/png" }));
             }).catch(err => {
                 alert('QRコードの生成に失敗しました。');
                 btn.textContent = originalText;
