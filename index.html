@@ -140,9 +140,9 @@
         .m-handle { position: absolute; width: 12px; height: 12px; background: #00ff00; border: 2px solid #000; border-radius: 50%; pointer-events: auto; transform: translate(-50%, -50%); box-shadow: 0 0 5px rgba(0,0,0,0.5); }
         .m-handle.nw { top: 0; left: 0; cursor: nwse-resize; } .m-handle.n { top: 0; left: 50%; cursor: ns-resize; } .m-handle.ne { top: 0; left: 100%; cursor: nesw-resize; } .m-handle.w { top: 50%; left: 0; cursor: ew-resize; } .m-handle.e { top: 50%; left: 100%; cursor: ew-resize; } .m-handle.sw { top: 100%; left: 0; cursor: nesw-resize; } .m-handle.s { top: 100%; left: 50%; cursor: ns-resize; } .m-handle.se { top: 100%; left: 100%; cursor: nwse-resize; }
 
-        #sidebar { width: 320px; background-color: #222; border-left: 1px solid #444; display: block; overflow-y: auto; position: absolute; right: 0; top: 0; bottom: 0; padding: 12px 16px; }
+        #sidebar { width: 320px; background-color: #222; display: block; position: absolute; right: 0; top: 0; bottom: 0; padding: 12px 16px; overflow-y: auto; border-left: 1px solid #444; }
         input[type=range] { accent-color: #00aaff; }
-        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #111; } ::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; } ::-webkit-scrollbar-thumb:hover { background: #777; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: #111; } ::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; } ::-webkit-scrollbar-thumb:hover { background: #777; }
         hr { border-color: #444; margin: 4px 0 !important; }
 
         .color-picker-ui { width: 2rem; height: 1.5rem; border-radius: 0.25rem; cursor: pointer; border: none; padding: 0; background-color: transparent; }
@@ -177,13 +177,25 @@
         body.fullscreen-mode #safety-guide { display: none !important; }
         body.fullscreen-mode #playout-panel { width: 100vw !important; }
 
-        /* スマホ用 送出専用モード2画面構成スタイル */
+        /* ★ スマホ用 縦積み＆横スクロール レスポンシブスタイル */
         @media (max-width: 768px) {
-            body.playout-mode #sidebar { display: none !important; }
-            body.playout-mode #preset-area { display: none !important; }
-            body.playout-mode #main-content { width: 100vw !important; height: 45vh !important; }
-            body.playout-mode #workspace-container { height: 100% !important; padding: 10px !important; }
-            body.playout-mode #playout-panel { height: 55vh !important; max-height: 55vh !important; width: 100vw !important; padding-bottom: 20px; }
+            body { overflow-y: auto !important; overflow-x: hidden; }
+            #app-screen { display: flex; flex-direction: column; height: auto; min-height: 100vh; overflow-y: visible; overflow-x: hidden; }
+            #main-content { width: 100% !important; height: auto !important; flex: none; display: flex; flex-direction: column; }
+            #workspace-container { height: 40vh !important; min-height: 250px; padding: 10px !important; flex: none; }
+            #preset-area { padding: 10px !important; border-top: none; border-bottom: 1px solid #333; flex: none; overflow: hidden; }
+            
+            /* 横スクロール化 */
+            #preset-grid { display: flex !important; flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden; padding-bottom: 10px; -webkit-overflow-scrolling: touch; gap: 8px; }
+            
+            #sidebar { position: relative !important; width: 100% !important; height: auto !important; border-left: none !important; border-top: 1px solid #444; flex: none; overflow: visible !important; }
+            
+            /* 送出専用モード（スマホ） */
+            body.playout-mode { overflow: hidden !important; }
+            body.playout-mode #app-screen { height: 100vh !important; overflow: hidden; }
+            body.playout-mode #main-content { height: 45vh !important; }
+            body.playout-mode #workspace-container { height: 100% !important; }
+            body.playout-mode #playout-panel { height: 55vh !important; max-height: 55vh !important; position: fixed; bottom: 0; }
         }
     </style>
 </head>
@@ -265,11 +277,11 @@
                 <div>
                     <label class="block text-slate-300 text-sm md:text-base font-bold mb-2">背番号（プリセット名先頭）で呼び出し</label>
                     <div class="flex gap-2 h-14 md:h-16">
-                        <input type="text" inputmode="numeric" id="po-number-input" class="w-1/3 bg-black border-2 border-slate-600 text-white text-3xl font-black rounded-xl px-2 text-center focus:border-blue-500 outline-none" placeholder="00">
+                        <input type="text" inputmode="numeric" id="po-number-input" class="w-1/3 bg-black border-2 border-slate-600 text-white text-3xl font-black rounded-xl px-2 text-center outline-none transition-colors" placeholder="00">
                         <button id="po-btn-preview" class="flex-1 bg-gray-600 hover:bg-gray-500 text-white text-xl md:text-2xl font-bold px-4 rounded-xl whitespace-nowrap shadow-md transition active:scale-95">プレビュー表示</button>
                     </div>
                 </div>
-                <div id="po-status-msg" class="text-base md:text-lg font-bold text-yellow-400 h-6 mt-1 truncate"></div>
+                <div id="po-status-msg" class="text-base md:text-lg font-bold text-yellow-400 h-6 mt-1 truncate transition-all"></div>
             </div>
 
             <div class="w-full sm:w-1/2 flex flex-col justify-center items-center sm:pl-4">
@@ -325,7 +337,7 @@
                     </div>
                     <span class="text-[10px] text-gray-500">シーン全体を保存して一発で切り替え</span>
                 </div>
-                <div id="preset-grid" class="grid grid-cols-10 gap-2"></div>
+                <div id="preset-grid" class="flex md:grid md:grid-cols-10 gap-2 overflow-x-auto pb-2 md:pb-0"></div>
             </div>
         </div>
 
@@ -591,7 +603,6 @@
             } catch (e) { return false; }
         }
 
-        // ★ 修正：セッション通信間隔とタイムアウト判定を緩和（iPhoneの通信負荷激減）
         async function checkSessionLimit(user) {
             const { collection, getDocs, setDoc, doc, deleteDoc } = window.firebaseModules;
             const sessionsRef = collection(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions');
@@ -599,14 +610,12 @@
             if (!mySessionId) { mySessionId = 'sess_' + Date.now() + '_' + Math.floor(Math.random()*1000); sessionStorage.setItem('cg_super_session_id', mySessionId); }
             try {
                 const snap = await getDocs(sessionsRef); const now = Date.now(); let activeCount = 0; const cleanupPromises = [];
-                // 15秒 -> 60秒に緩和
                 snap.forEach(d => { const data = d.data(); if (d.id === mySessionId) return; if (now - data.updatedAt > 60000) { cleanupPromises.push(deleteDoc(d.ref)); } else { activeCount++; } });
                 await Promise.all(cleanupPromises);
                 if (activeCount >= 2) return false;
                 const myDoc = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions', mySessionId);
                 await setDoc(myDoc, { updatedAt: Date.now() });
                 if (window.sessionUpdateInterval) clearInterval(window.sessionUpdateInterval);
-                // 5秒 -> 20秒に延長
                 window.sessionUpdateInterval = setInterval(async () => { try { await setDoc(myDoc, { updatedAt: Date.now() }, { merge: true }); } catch(e){} }, 20000);
                 return true;
             } catch (e) { return true; }
@@ -952,7 +961,10 @@
         function initPresets() {
             const grid = document.getElementById('preset-grid');
             for (let i = 0; i < 30; i++) {
-                const box = document.createElement('div'); box.className = 'preset-box relative bg-gray-800 border border-gray-600 rounded aspect-video flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-gray-700 transition-all group shadow-md'; box.dataset.index = i;
+                const box = document.createElement('div'); 
+                // ★ スマホでは横幅を固定して横スクロール、PCでは自動調整
+                box.className = 'preset-box flex-none w-28 h-16 md:w-auto md:h-auto relative bg-gray-800 border border-gray-600 rounded aspect-auto md:aspect-video flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-gray-700 transition-all group shadow-md'; 
+                box.dataset.index = i;
                 box.innerHTML = `<button class="btn-preset-save absolute top-1 right-1 w-5 h-5 bg-blue-600 hover:bg-blue-500 text-white text-[12px] font-bold rounded flex items-center justify-center z-10 opacity-0 group-hover:opacity-100 transition-opacity shadow" title="保存">+</button><div class="preset-thumb-text flex flex-col items-center justify-center w-full h-full px-1"></div>`;
                 grid.appendChild(box); updatePresetDisplay(box, i);
             }
@@ -1013,7 +1025,7 @@
 
         document.getElementById('btn-toggle-moving').addEventListener('click', (e) => { isMoving = !isMoving; e.target.textContent = `ムービング: ${isMoving ? '稼働中' : '停止'}`; e.target.classList.toggle('bg-gray-600', isMoving); e.target.classList.toggle('bg-red-600', !isMoving); });
 
-        // ★ 修正：履歴保存をキャンバスデータのみに限定し、上限を10回に軽量化
+        // 履歴を10回に制限（キャンバスデータのみ）
         function saveHistory() {
             if (historyIndex < historyList.length - 1) historyList = historyList.slice(0, historyIndex + 1);
             
@@ -1423,9 +1435,6 @@
             reader.readAsDataURL(file); e.target.value = '';
         });
 
-        // ==========================================
-        // ★ QRコード生成ロジック (ポップ＆純粋PNG浄化版)
-        // ==========================================
         document.getElementById('btn-add-qr').addEventListener('click', () => {
             ensureSelection(); const data = getActiveSuper(); 
             if (!data) return alert('追加先となるスーパーを選択してください。');
@@ -1462,18 +1471,12 @@
                 }
             });
 
-            qrCode.getRawData("png").then((blob) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement("canvas");
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    const ctx = canvas.getContext("2d");
-                    ctx.drawImage(img, 0, 0);
-                    const cleanDataUrl = canvas.toDataURL("image/png");
-                    
+            qrCode.getRawData("png").then((buffer) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = reader.result;
                     imgCounter++; const newId = 'img_' + imgCounter;
-                    data.images.push({ id: newId, url: cleanDataUrl, x: 50, y: 50, w: 120, h: 120, opacity: 100 });
+                    data.images.push({ id: newId, url: dataUrl, x: 50, y: 50, w: 120, h: 120, opacity: 100 });
                     data.layersOrder.unshift('image_' + newId);
                     updateSuperDOM(data.id); updateUIFromData(); saveHistory();
                     
@@ -1481,12 +1484,7 @@
                     btn.textContent = originalText;
                     btn.disabled = false;
                 };
-                img.onerror = () => {
-                    alert('QR画像の変換に失敗しました。');
-                    btn.textContent = originalText;
-                    btn.disabled = false;
-                };
-                img.src = URL.createObjectURL(blob);
+                reader.readAsDataURL(new Blob([buffer], { type: "image/png" }));
             }).catch(err => {
                 alert('QRコードの生成に失敗しました。');
                 btn.textContent = originalText;
@@ -1708,8 +1706,15 @@
                 else { supers = JSON.parse(JSON.stringify(targetData.supers || [])); if (targetData.extSource) extSource = JSON.parse(JSON.stringify(targetData.extSource)); }
                 activeIds = []; renderAllSupers(); updateExtSourceDOM(); updateUIFromData();
                 
-                poStatusMsg.textContent = `✅ ${foundDisplayName}`;
-                poStatusMsg.className = 'text-sm md:text-base font-bold text-green-400 h-6 mt-1 truncate';
+                // ★ 自動プレビューの成功サイン（枠が一瞬緑に光り、文字が強調される）
+                poStatusMsg.textContent = `✅ プレビュー準備完了: ${foundDisplayName}`;
+                poStatusMsg.className = 'text-sm md:text-base font-bold text-green-400 h-6 mt-1 truncate animate-pulse';
+                poNumberInput.classList.add('border-green-500', 'bg-green-900', 'bg-opacity-20');
+                
+                setTimeout(() => {
+                    poNumberInput.classList.remove('border-green-500', 'bg-green-900', 'bg-opacity-20');
+                    poStatusMsg.classList.remove('animate-pulse');
+                }, 1000);
                 
                 supers.forEach(data => { if(data.inAction > 0) playInAction(data.id, data.inAction); });
             } else {
@@ -1718,9 +1723,20 @@
             }
         }
 
+        // ★ プレビューボタン押下時の処理
         poBtnPreview.addEventListener('click', doPlayoutPreview);
+        
+        // ★ キーボードで「Enter」を押した時の処理
         poNumberInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); doPlayoutPreview(); }
+            if (e.key === 'Enter') { e.preventDefault(); doPlayoutPreview(); poNumberInput.blur(); }
+        });
+        
+        // ★ スマホの「✓（完了）」を押してキーボードが閉じた時に自動プレビューする処理
+        poNumberInput.addEventListener('change', () => {
+            if (poNumberInput.value.trim() !== '') {
+                doPlayoutPreview();
+                poNumberInput.blur(); // 確実にキーボードを閉じる
+            }
         });
 
         poBtnTake.addEventListener('click', () => {
@@ -1787,12 +1803,9 @@
 
         document.getElementById('btn-export').addEventListener('click', () => { runExport(async () => { document.getElementById('progress-modal').style.display = 'flex'; const zip = new JSZip(); const fps = 30; const totalFrames = fps * 6; for (let i = 0; i < totalFrames; i++) { const p = i / totalFrames; workspace.style.setProperty('--anim-p', p); workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(p * Math.PI * 12)); await new Promise(r => setTimeout(r, 20)); const canvas = await html2canvas(workspace, { backgroundColor: null, scale: 1, logging: false, width: canvasWidth, height: canvasHeight, x: 0, y: 0 }); zip.file(`super_frame_${String(i).padStart(3, '0')}.tga`, createTGA(canvas), { binary: true, compression: "STORE" }); document.getElementById('progress-bar').style.width = Math.round(((i + 1) / totalFrames) * 100) + '%'; document.getElementById('progress-text').textContent = `${i + 1} / ${totalFrames} Frames`; } document.getElementById('progress-text').textContent = "ZIPを生成中..."; await new Promise(r => setTimeout(r, 100)); saveAs(await zip.generateAsync({type:"blob", compression: "STORE"}), "super_cg_sequence.zip"); document.getElementById('progress-modal').style.display = 'none'; document.getElementById('progress-bar').style.width = '0%'; }); });
 
-        // ★ 修正：アプローチA（スマホ完全エコモード）で熱暴走とクラッシュを防止！
         function animationLoop() {
-            // 幅768px以下のモバイル端末かどうかを判定
             const isMobile = window.innerWidth <= 768 && !isObsMode;
             
-            // PC・OBS環境、もしくは「書き出し中」の場合のみアニメーション計算を実行（スマホの待機時は完全フリーズでiPhoneを休ませる）
             if (!isMobile || document.body.classList.contains('exporting')) {
                 if (isMoving) {
                     let needsAnimation = supers.some(s => s.showLive || s.isFuta);
