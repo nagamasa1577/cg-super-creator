@@ -1010,21 +1010,51 @@
 
         document.getElementById('btn-toggle-moving').addEventListener('click', (e) => { isMoving = !isMoving; e.target.textContent = `ムービング: ${isMoving ? '稼働中' : '停止'}`; e.target.classList.toggle('bg-gray-600', isMoving); e.target.classList.toggle('bg-red-600', !isMoving); });
 
+        // ==========================================
+        // ★ 履歴保存（Ctrl+Z）機能の超軽量化版
+        // ==========================================
         function saveHistory() {
             if (historyIndex < historyList.length - 1) historyList = historyList.slice(0, historyIndex + 1);
-            const state = { supers: JSON.parse(JSON.stringify(supers)), extSource: JSON.parse(JSON.stringify(extSource)), presets: JSON.parse(JSON.stringify(presets)), presetNames: JSON.parse(JSON.stringify(presetNames)), presetThumbs: JSON.parse(JSON.stringify(presetThumbs)), activeIds: [...activeIds] };
-            historyList.push(JSON.stringify(state)); historyIndex++; if (historyList.length > 50) { historyList.shift(); historyIndex--; }
+            
+            // ★ 修正箇所1：激重な「presets」関連を除外し、キャンバス上のデータのみを保存するように変更
+            const state = { 
+                supers: JSON.parse(JSON.stringify(supers)), 
+                extSource: JSON.parse(JSON.stringify(extSource)), 
+                activeIds: [...activeIds] 
+            };
+            
+            historyList.push(JSON.stringify(state)); 
+            historyIndex++; 
+            
+            // ★ 修正箇所2：スマホのメモリクラッシュ（強制リロード）を防ぐため、履歴の上限を15回に削減
+            if (historyList.length > 15) { 
+                historyList.shift(); 
+                historyIndex--; 
+            }
             syncToCloud();
         }
 
         function loadHistoryState() {
             const state = JSON.parse(historyList[historyIndex]);
-            if (Array.isArray(state)) { supers = state; } else { supers = state.supers || []; if (state.extSource) extSource = state.extSource; activeIds = state.activeIds || (state.activeId ? [state.activeId] : []);
-                if (state.presets) { const migrated = migratePresetsData(state); presets = migrated.presets; presetNames = migrated.presetNames; presetThumbs = migrated.presetThumbs; }
+            if (Array.isArray(state)) { 
+                supers = state; 
+            } else { 
+                supers = state.supers || []; 
+                if (state.extSource) extSource = state.extSource; 
+                activeIds = state.activeIds || (state.activeId ? [state.activeId] : []);
+                
+                // ※過去の重い履歴データが残っていた場合のための互換性処理（そのまま残しておきます）
+                if (state.presets) { 
+                    const migrated = migratePresetsData(state); 
+                    presets = migrated.presets; presetNames = migrated.presetNames; presetThumbs = migrated.presetThumbs; 
+                }
             }
             activeIds = activeIds.filter(id => supers.find(s => s.id === id) || id === 'ext-source');
             renderAllSupers(); updateExtSourceDOM(); refreshPresetGrid();
-            document.querySelectorAll('.super-item').forEach(el => { if (activeIds.includes(el.id)) { el.classList.add('active'); el.style.zIndex = 50; } else { el.classList.remove('active'); el.style.zIndex = 10; } });
+            document.querySelectorAll('.super-item').forEach(el => { 
+                if (activeIds.includes(el.id)) { el.classList.add('active'); el.style.zIndex = 50; } 
+                else { el.classList.remove('active'); el.style.zIndex = 10; } 
+            });
             updateUIFromData(); syncToCloud();
         }
 
