@@ -178,9 +178,6 @@
         
         #progress-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; }
 
-        /* 送出専用パネルのスタイル */
-        /* Tailwindクラスに移行しました */
-        
         /* ★ スマホ用 送出専用モード2画面構成スタイル */
         @media (max-width: 768px) {
             body.playout-mode #sidebar { display: none !important; }
@@ -224,7 +221,6 @@
         </div>
     </div>
 
-    <!-- AI自動生成モーダル -->
     <div id="ai-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-[9900]">
         <div class="bg-[#1e1e2f] border border-[#3b3b5c] rounded-xl shadow-2xl w-[480px] max-w-[90vw] p-6 relative">
             <button id="btn-close-ai" class="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors">
@@ -251,7 +247,6 @@
         </div>
     </div>
 
-    <!-- ★ 送出専用パネル（下半分）スマホ対応・UI拡大版 -->
     <div id="playout-panel" class="fixed bottom-0 left-0 w-full lg:w-[calc(100vw-320px)] min-h-[35vh] h-auto max-h-[80vh] overflow-y-auto bg-slate-900 border-t-4 border-red-600 shadow-[0_-15px_40px_rgba(0,0,0,0.8)] z-[8000] flex flex-col transform translate-y-full transition-transform duration-300">
         <div class="flex justify-between items-center p-3 md:p-4 bg-slate-950 border-b border-slate-700 sticky top-0 z-10">
             <h2 class="text-base md:text-xl font-bold text-red-500 flex items-center gap-2">
@@ -309,7 +304,6 @@
                 </div>
             </div>
             
-            <!-- ★ プリセットエリア（HOME/AWAY分割） -->
             <div id="preset-area">
                 <div class="flex items-center justify-between mb-2">
                     <div class="flex items-center gap-4">
@@ -324,7 +318,6 @@
                     </div>
                     <span class="text-[10px] text-gray-500">シーン全体を保存して一発で切り替え</span>
                 </div>
-                <!-- 10列×3行のグリッドに変更 -->
                 <div id="preset-grid" class="grid grid-cols-10 gap-2"></div>
             </div>
         </div>
@@ -533,7 +526,6 @@
                 <p class="text-[8px] text-gray-500 text-center leading-none mt-1">Ctrl+Z: 戻る / Shift+Ctrl+Z: やり直し</p>
             </div>
 
-            <!-- ★ 送出専用モードボタンを追加 -->
             <div class="flex-shrink-0 border-t border-slate-700 pt-2 pb-1 mt-1">
                 <button id="btn-open-playout" class="w-full py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-black rounded-lg shadow-lg border border-red-400 flex justify-center items-center gap-2 transition-transform active:scale-95">
                     🔴 送出専用モード (TAKE)
@@ -661,13 +653,11 @@
         let activeIds = []; let lastActiveIds = []; 
         let superCounter = 0; let ctCounter = 0; let imgCounter = 0;
         
-        // ★ プリセット管理をHOME/AWAY各30個のオブジェクト構造に変更
-        let presetTab = 'home'; // 'home' or 'away'
+        let presetTab = 'home';
         let presets = { home: new Array(30).fill(null), away: new Array(30).fill(null) };
         let presetNames = { home: new Array(30).fill(null), away: new Array(30).fill(null) };
         let presetThumbs = { home: new Array(30).fill(null), away: new Array(30).fill(null) };
         
-        // ★ 送出専用モードのステート
         let isPlayoutMode = false;
         let poCurrentTab = 'home';
 
@@ -705,7 +695,6 @@
             ops: [null, document.getElementById('op-1'), document.getElementById('op-2'), document.getElementById('op-3'), document.getElementById('op-4')], extUrl: document.getElementById('input-external-url') 
         };
 
-        // 旧データ互換用マイグレーション関数
         function migratePresetsData(loadedData) {
             if (Array.isArray(loadedData.presets)) {
                 return {
@@ -760,7 +749,6 @@
                             if (grid) { for (let i = 0; i < 30; i++) updatePresetDisplay(grid.children[i], i); }
                         }
 
-                        // ★ 送出専用モード中は、他人の変更（または自分の過去の変更の跳ね返り）でプレビュー画面を上書きしない
                         if (needsUIUpdate && !isPlayoutMode) {
                             renderAllSupers(); updateExtSourceDOM();
                             activeIds = activeIds.filter(id => supers.find(s => s.id === id) || id === 'ext-source');
@@ -775,7 +763,6 @@
 
         async function syncToCloud(actionData = null, forceTake = false) {
             if (!window.firebaseDb || !window.syncRoomId || isObsMode) return;
-            // ★ 送出専用モード中は強制TAKE以外は自動同期をストップ
             if (isPlayoutMode && !forceTake) return;
 
             const { doc, setDoc } = window.firebaseModules;
@@ -934,12 +921,8 @@
             });
         });
 
-        // ★ プリセットUI更新 (HOME/AWAY対応)
         function updatePresetDisplay(box, index) {
-            const currentPresets = presets[presetTab];
-            const currentNames = presetNames[presetTab];
-            const currentThumbs = presetThumbs[presetTab];
-            
+            const currentPresets = presets[presetTab]; const currentNames = presetNames[presetTab]; const currentThumbs = presetThumbs[presetTab];
             if (!currentPresets[index]) { box.querySelector('.preset-thumb-text').innerHTML = `<div class="text-[10px] text-gray-500 absolute top-1 left-1">P${parseInt(index) + 1}</div><div class="text-[11px] font-bold text-gray-500">- 未登録 -</div>`; return; }
             let t1 = ''; let t2 = '';
             if (currentThumbs && currentThumbs[index]) { t1 = currentThumbs[index].t1; t2 = currentThumbs[index].t2; } else { const targetSuper = currentPresets[index].supers ? currentPresets[index].supers[0] : (Array.isArray(currentPresets[index]) ? currentPresets[index][0] : null); t1 = targetSuper ? (targetSuper.isFuta ? targetSuper.futaText1 : targetSuper.text1) : ''; t2 = targetSuper ? (targetSuper.isFuta ? targetSuper.futaText2 : targetSuper.text2) : ''; }
@@ -1558,16 +1541,15 @@
             document.body.classList.add('playout-mode'); // ★ クラス付与でスマホレイアウト変形
             playoutPanel.classList.remove('translate-y-full');
             poNumberInput.focus();
-            setTimeout(window.updateScale, 100); // 画面サイズ変更に合わせてスケール再計算
+            setTimeout(window.updateScale, 100);
         });
 
         btnClosePlayout.addEventListener('click', () => {
             isPlayoutMode = false;
             document.body.classList.remove('playout-mode'); // ★ レイアウトを元に戻す
             playoutPanel.classList.add('translate-y-full');
-            // パネルを閉じた瞬間に、現在のキャンバスの状態をOBSに同期し直す
-            syncToCloud();
-            setTimeout(window.updateScale, 100); // スケール再計算
+            syncToCloud(); // パネルを閉じた瞬間に現在のキャンバス状態をOBSに同期し直す
+            setTimeout(window.updateScale, 100);
         });
 
         poTabHome.addEventListener('click', () => {
@@ -1607,7 +1589,7 @@
             let foundIndex = -1;
             let foundDisplayName = '';
             
-            // ★ 誤爆防止：カスタム名のみを検索対象にする
+            // 誤爆防止：カスタム名のみを検索対象にする
             for (let i = 0; i < 30; i++) {
                 let targetText = names[i] ? names[i] : '';
 
@@ -1645,24 +1627,20 @@
         });
 
         poBtnTake.addEventListener('click', () => {
-            // TAKEボタンのエフェクト
             poBtnTake.classList.add('scale-95', 'bg-red-800');
             setTimeout(() => poBtnTake.classList.remove('scale-95', 'bg-red-800'), 150);
             
-            // INアニメーションが設定されている場合は、同期のキューに入れる
             const actions = [];
             supers.forEach(data => { if(data.inAction > 0) { actions.push({ id: data.id, type: data.inAction }); } });
             
             if (actions.length > 0) {
-                // アニメーションデータと一緒に、強制同期（forceTake=true）
                 syncToCloud({ timestamp: Date.now(), actions: actions }, true);
             } else {
-                // 普通に強制同期
                 syncToCloud(null, true);
             }
             
             poStatusMsg.textContent = '⚡ OBSへTAKE送信完了';
-            poStatusMsg.className = 'text-sm font-bold text-white h-5 mt-1 truncate';
+            poStatusMsg.className = 'text-sm font-bold text-white h-6 mt-1 truncate';
         });
 
         // ==========================================
