@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
     <style>
         :root { --anim-p: 0; --live-a: 1; }
@@ -176,7 +177,7 @@
         body.fullscreen-mode #safety-guide { display: none !important; }
         body.fullscreen-mode #playout-panel { width: 100vw !important; }
 
-        /* ★ スマホ用 送出専用モード2画面構成スタイル */
+        /* スマホ用 送出専用モード2画面構成スタイル */
         @media (max-width: 768px) {
             body.playout-mode #sidebar { display: none !important; }
             body.playout-mode #preset-area { display: none !important; }
@@ -431,9 +432,13 @@
 
                 <div class="p-1 bg-gray-800 rounded border border-gray-600 mt-1">
                     <div class="flex justify-between items-center mb-0.5">
-                        <label class="text-[9px] text-gray-300 font-bold">追加画像</label>
+                        <label class="text-[9px] text-gray-300 font-bold">追加画像 / QRコード</label>
                         <button id="btn-add-image" class="px-1.5 py-0.5 bg-blue-600 text-white text-[9px] rounded">+ 画像読込</button>
                         <input type="file" id="input-add-image" accept="image/png, image/jpeg, image/webp" style="display:none;">
+                    </div>
+                    <div class="flex items-center gap-1 mb-1 border-b border-gray-700 pb-1">
+                        <input type="text" id="input-qr-url" class="flex-1 bg-gray-900 border border-gray-600 text-white text-[9px] p-1 rounded" placeholder="https:// QRにするURL">
+                        <button id="btn-add-qr" class="px-1.5 py-0.5 bg-green-600 hover:bg-green-500 text-white text-[9px] rounded transition shadow">QR配置</button>
                     </div>
                     <div id="image-editors" class="space-y-0.5 max-h-16 overflow-y-auto pr-1"></div>
                 </div>
@@ -1403,6 +1408,51 @@
             reader.readAsDataURL(file); e.target.value = '';
         });
 
+        // ==========================================
+        // ★ QRコード生成ロジック
+        // ==========================================
+        document.getElementById('btn-add-qr').addEventListener('click', () => {
+            ensureSelection(); const data = getActiveSuper(); 
+            if (!data) return alert('追加先となるスーパーを選択してください。');
+            
+            const url = document.getElementById('input-qr-url').value.trim();
+            if (!url) return alert('QRコードにするURLを入力してください。');
+
+            const btn = document.getElementById('btn-add-qr');
+            const originalText = btn.textContent;
+            btn.textContent = '生成中...';
+            btn.disabled = true;
+
+            const tempDiv = document.createElement('div');
+            new QRCode(tempDiv, {
+                text: url,
+                width: 256,
+                height: 256,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+
+            // ライブラリのCanvas描画完了を少し待ってから画像として取り込む
+            setTimeout(() => {
+                const canvas = tempDiv.querySelector('canvas');
+                if (canvas) {
+                    const dataUrl = canvas.toDataURL('image/png');
+                    imgCounter++; const newId = 'img_' + imgCounter;
+                    // QRコードは正方形（w:120, h:120）で配置
+                    data.images.push({ id: newId, url: dataUrl, x: 50, y: 50, w: 120, h: 120, opacity: 100 });
+                    data.layersOrder.unshift('image_' + newId);
+                    updateSuperDOM(data.id); updateUIFromData(); saveHistory();
+                    
+                    document.getElementById('input-qr-url').value = ''; // 入力欄をクリア
+                } else {
+                    alert('QRコードの生成に失敗しました。');
+                }
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }, 100);
+        });
+
         document.querySelectorAll('input[name="mat-edit"]').forEach(radio => {
             radio.addEventListener('change', () => { ensureSelection(); activeIds.forEach(id => updateSuperDOM(id)); });
         });
@@ -1572,6 +1622,11 @@
             poNumberInput.focus();
         });
 
+        // ★ クリック（フォーカス）時に自動で数値をクリア
+        poNumberInput.addEventListener('focus', () => {
+            poNumberInput.value = '';
+        });
+
         function toHalfWidthDigit(str) {
             if (!str) return '';
             return str.replace(/[０-９]/g, function(s) {
@@ -1613,7 +1668,7 @@
                 else { supers = JSON.parse(JSON.stringify(targetData.supers || [])); if (targetData.extSource) extSource = JSON.parse(JSON.stringify(targetData.extSource)); }
                 activeIds = []; renderAllSupers(); updateExtSourceDOM(); updateUIFromData();
                 
-                poStatusMsg.textContent = `✅ プレビュー表示中: ${foundDisplayName}`;
+                poStatusMsg.textContent = `✅ ${foundDisplayName}`;
                 poStatusMsg.className = 'text-sm md:text-base font-bold text-green-400 h-6 mt-1 truncate';
                 
                 supers.forEach(data => { if(data.inAction > 0) playInAction(data.id, data.inAction); });
@@ -1636,7 +1691,6 @@
             supers.forEach(data => { if(data.inAction > 0) { actions.push({ id: data.id, type: data.inAction }); } });
             
             if (actions.length > 0) {
-                // ★ OBSへ送信と同時に、手元のプレビューでもINアクションを再生
                 syncToCloud({ timestamp: Date.now(), actions: actions }, true);
                 requestAnimationFrame(() => {
                     supers.forEach(data => {
@@ -1649,6 +1703,9 @@
             
             poStatusMsg.textContent = '⚡ OBSへTAKE送信完了';
             poStatusMsg.className = 'text-sm font-bold text-white h-6 mt-1 truncate';
+            // TAKE後も次の入力がすぐできるように入力欄をクリア＆フォーカス
+            poNumberInput.value = '';
+            poNumberInput.focus();
         });
 
         // ==========================================
