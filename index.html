@@ -1013,7 +1013,7 @@
 
         document.getElementById('btn-toggle-moving').addEventListener('click', (e) => { isMoving = !isMoving; e.target.textContent = `ムービング: ${isMoving ? '稼働中' : '停止'}`; e.target.classList.toggle('bg-gray-600', isMoving); e.target.classList.toggle('bg-red-600', !isMoving); });
 
-        // ★ 修正：履歴保存をキャンバスデータのみに限定し、上限を5回に激減
+        // ★ 修正：履歴保存をキャンバスデータのみに限定し、上限を10回に軽量化
         function saveHistory() {
             if (historyIndex < historyList.length - 1) historyList = historyList.slice(0, historyIndex + 1);
             
@@ -1025,7 +1025,7 @@
             
             historyList.push(JSON.stringify(state)); 
             historyIndex++; 
-            if (historyList.length > 5) { 
+            if (historyList.length > 10) { 
                 historyList.shift(); 
                 historyIndex--; 
             }
@@ -1438,7 +1438,6 @@
             btn.textContent = '生成中...';
             btn.disabled = true;
 
-            // スマホアイコンのBase64データ
             const phoneIconBase64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiPjxyZWN0IHg9IjUiIHk9IjIiIHdpZHRoPSIxNCIgaGVpZ2h0PSIyMCIgcng9IjIiIGZpbGw9IiMzMzMzMzMiLz48cmVjdCB4PSI3IiB5PSI0IiB3aWR0aD0iMTAiIGhlaWdodD0iMTQiIGZpbGw9IiNmZmZmZmYiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjIwIiByPSIxIiBmaWxsPSIjZmZmZmZmIi8+PC9zdmc+";
 
             const qrCode = new QRCodeStyling({
@@ -1464,7 +1463,6 @@
             });
 
             qrCode.getRawData("png").then((blob) => {
-                // 一度Imageとして読み込み、標準Canvasで純粋なPNGに再変換する（浄化）
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement("canvas");
@@ -1472,7 +1470,6 @@
                     canvas.height = img.height;
                     const ctx = canvas.getContext("2d");
                     ctx.drawImage(img, 0, 0);
-                    // 標準的なBase64画像として抽出
                     const cleanDataUrl = canvas.toDataURL("image/png");
                     
                     imgCounter++; const newId = 'img_' + imgCounter;
@@ -1790,16 +1787,21 @@
 
         document.getElementById('btn-export').addEventListener('click', () => { runExport(async () => { document.getElementById('progress-modal').style.display = 'flex'; const zip = new JSZip(); const fps = 30; const totalFrames = fps * 6; for (let i = 0; i < totalFrames; i++) { const p = i / totalFrames; workspace.style.setProperty('--anim-p', p); workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(p * Math.PI * 12)); await new Promise(r => setTimeout(r, 20)); const canvas = await html2canvas(workspace, { backgroundColor: null, scale: 1, logging: false, width: canvasWidth, height: canvasHeight, x: 0, y: 0 }); zip.file(`super_frame_${String(i).padStart(3, '0')}.tga`, createTGA(canvas), { binary: true, compression: "STORE" }); document.getElementById('progress-bar').style.width = Math.round(((i + 1) / totalFrames) * 100) + '%'; document.getElementById('progress-text').textContent = `${i + 1} / ${totalFrames} Frames`; } document.getElementById('progress-text').textContent = "ZIPを生成中..."; await new Promise(r => setTimeout(r, 100)); saveAs(await zip.generateAsync({type:"blob", compression: "STORE"}), "super_cg_sequence.zip"); document.getElementById('progress-modal').style.display = 'none'; document.getElementById('progress-bar').style.width = '0%'; }); });
 
-        // ★ 修正：アニメーション処理の最適化（省エネ化でiPhoneを休ませる）
+        // ★ 修正：アプローチA（スマホ完全エコモード）で熱暴走とクラッシュを防止！
         function animationLoop() {
-            if (isMoving && !document.body.classList.contains('exporting')) {
-                // キャンバス上に「LIVEバッジ」か「フタ背景」が必要なスーパーがある時だけ再計算する
-                let needsAnimation = supers.some(s => s.showLive || s.isFuta);
-                if (needsAnimation) {
-                    const now = Date.now();
-                    const p = (now % 3000) / 3000;
-                    workspace.style.setProperty('--anim-p', p);
-                    workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(now / 150));
+            // 幅768px以下のモバイル端末かどうかを判定
+            const isMobile = window.innerWidth <= 768 && !isObsMode;
+            
+            // PC・OBS環境、もしくは「書き出し中」の場合のみアニメーション計算を実行（スマホの待機時は完全フリーズでiPhoneを休ませる）
+            if (!isMobile || document.body.classList.contains('exporting')) {
+                if (isMoving) {
+                    let needsAnimation = supers.some(s => s.showLive || s.isFuta);
+                    if (needsAnimation) {
+                        const now = Date.now();
+                        const p = (now % 3000) / 3000;
+                        workspace.style.setProperty('--anim-p', p);
+                        workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(now / 150));
+                    }
                 }
             }
             requestAnimationFrame(animationLoop);
