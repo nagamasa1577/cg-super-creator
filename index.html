@@ -591,6 +591,7 @@
             } catch (e) { return false; }
         }
 
+        // ★ 修正：セッション通信間隔とタイムアウト判定を緩和（iPhoneの通信負荷激減）
         async function checkSessionLimit(user) {
             const { collection, getDocs, setDoc, doc, deleteDoc } = window.firebaseModules;
             const sessionsRef = collection(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions');
@@ -598,13 +599,15 @@
             if (!mySessionId) { mySessionId = 'sess_' + Date.now() + '_' + Math.floor(Math.random()*1000); sessionStorage.setItem('cg_super_session_id', mySessionId); }
             try {
                 const snap = await getDocs(sessionsRef); const now = Date.now(); let activeCount = 0; const cleanupPromises = [];
-                snap.forEach(d => { const data = d.data(); if (d.id === mySessionId) return; if (now - data.updatedAt > 15000) { cleanupPromises.push(deleteDoc(d.ref)); } else { activeCount++; } });
+                // 15秒 -> 60秒に緩和
+                snap.forEach(d => { const data = d.data(); if (d.id === mySessionId) return; if (now - data.updatedAt > 60000) { cleanupPromises.push(deleteDoc(d.ref)); } else { activeCount++; } });
                 await Promise.all(cleanupPromises);
                 if (activeCount >= 2) return false;
                 const myDoc = doc(window.firebaseDb, 'artifacts', window.firebaseAppId, 'users', user.uid, 'sessions', mySessionId);
                 await setDoc(myDoc, { updatedAt: Date.now() });
                 if (window.sessionUpdateInterval) clearInterval(window.sessionUpdateInterval);
-                window.sessionUpdateInterval = setInterval(async () => { try { await setDoc(myDoc, { updatedAt: Date.now() }, { merge: true }); } catch(e){} }, 5000);
+                // 5秒 -> 20秒に延長
+                window.sessionUpdateInterval = setInterval(async () => { try { await setDoc(myDoc, { updatedAt: Date.now() }, { merge: true }); } catch(e){} }, 20000);
                 return true;
             } catch (e) { return true; }
         }
@@ -1010,13 +1013,10 @@
 
         document.getElementById('btn-toggle-moving').addEventListener('click', (e) => { isMoving = !isMoving; e.target.textContent = `ムービング: ${isMoving ? '稼働中' : '停止'}`; e.target.classList.toggle('bg-gray-600', isMoving); e.target.classList.toggle('bg-red-600', !isMoving); });
 
-        // ==========================================
-        // ★ 履歴保存（Ctrl+Z）機能の超軽量化版
-        // ==========================================
+        // ★ 修正：履歴保存をキャンバスデータのみに限定し、上限を5回に激減
         function saveHistory() {
             if (historyIndex < historyList.length - 1) historyList = historyList.slice(0, historyIndex + 1);
             
-            // ★ 修正箇所1：激重な「presets」関連を除外し、キャンバス上のデータのみを保存するように変更
             const state = { 
                 supers: JSON.parse(JSON.stringify(supers)), 
                 extSource: JSON.parse(JSON.stringify(extSource)), 
@@ -1025,9 +1025,7 @@
             
             historyList.push(JSON.stringify(state)); 
             historyIndex++; 
-            
-            // ★ 修正箇所2：スマホのメモリクラッシュ（強制リロード）を防ぐため、履歴の上限を15回に削減
-            if (historyList.length > 15) { 
+            if (historyList.length > 5) { 
                 historyList.shift(); 
                 historyIndex--; 
             }
@@ -1036,25 +1034,12 @@
 
         function loadHistoryState() {
             const state = JSON.parse(historyList[historyIndex]);
-            if (Array.isArray(state)) { 
-                supers = state; 
-            } else { 
-                supers = state.supers || []; 
-                if (state.extSource) extSource = state.extSource; 
-                activeIds = state.activeIds || (state.activeId ? [state.activeId] : []);
-                
-                // ※過去の重い履歴データが残っていた場合のための互換性処理（そのまま残しておきます）
-                if (state.presets) { 
-                    const migrated = migratePresetsData(state); 
-                    presets = migrated.presets; presetNames = migrated.presetNames; presetThumbs = migrated.presetThumbs; 
-                }
+            if (Array.isArray(state)) { supers = state; } else { supers = state.supers || []; if (state.extSource) extSource = state.extSource; activeIds = state.activeIds || (state.activeId ? [state.activeId] : []);
+                if (state.presets) { const migrated = migratePresetsData(state); presets = migrated.presets; presetNames = migrated.presetNames; presetThumbs = migrated.presetThumbs; }
             }
             activeIds = activeIds.filter(id => supers.find(s => s.id === id) || id === 'ext-source');
             renderAllSupers(); updateExtSourceDOM(); refreshPresetGrid();
-            document.querySelectorAll('.super-item').forEach(el => { 
-                if (activeIds.includes(el.id)) { el.classList.add('active'); el.style.zIndex = 50; } 
-                else { el.classList.remove('active'); el.style.zIndex = 10; } 
-            });
+            document.querySelectorAll('.super-item').forEach(el => { if (activeIds.includes(el.id)) { el.classList.add('active'); el.style.zIndex = 50; } else { el.classList.remove('active'); el.style.zIndex = 10; } });
             updateUIFromData(); syncToCloud();
         }
 
@@ -1479,7 +1464,7 @@
             });
 
             qrCode.getRawData("png").then((blob) => {
-                // ★ 奥の手：一度Imageとして読み込み、標準Canvasで「純粋なPNG」に再変換（浄化）する
+                // 一度Imageとして読み込み、標準Canvasで純粋なPNGに再変換する（浄化）
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement("canvas");
@@ -1487,7 +1472,7 @@
                     canvas.height = img.height;
                     const ctx = canvas.getContext("2d");
                     ctx.drawImage(img, 0, 0);
-                    // 100%標準的なBase64画像として抽出
+                    // 標準的なBase64画像として抽出
                     const cleanDataUrl = canvas.toDataURL("image/png");
                     
                     imgCounter++; const newId = 'img_' + imgCounter;
@@ -1681,7 +1666,6 @@
             poNumberInput.focus();
         });
 
-        // ★ クリック（フォーカス）時に自動で数値をクリア
         poNumberInput.addEventListener('focus', () => {
             poNumberInput.value = '';
         });
@@ -1762,7 +1746,6 @@
             
             poStatusMsg.textContent = '⚡ OBSへTAKE送信完了';
             poStatusMsg.className = 'text-sm font-bold text-white h-6 mt-1 truncate';
-            // TAKE後も次の入力がすぐできるように入力欄をクリア＆フォーカス
             poNumberInput.value = '';
             poNumberInput.focus();
         });
@@ -1807,12 +1790,17 @@
 
         document.getElementById('btn-export').addEventListener('click', () => { runExport(async () => { document.getElementById('progress-modal').style.display = 'flex'; const zip = new JSZip(); const fps = 30; const totalFrames = fps * 6; for (let i = 0; i < totalFrames; i++) { const p = i / totalFrames; workspace.style.setProperty('--anim-p', p); workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(p * Math.PI * 12)); await new Promise(r => setTimeout(r, 20)); const canvas = await html2canvas(workspace, { backgroundColor: null, scale: 1, logging: false, width: canvasWidth, height: canvasHeight, x: 0, y: 0 }); zip.file(`super_frame_${String(i).padStart(3, '0')}.tga`, createTGA(canvas), { binary: true, compression: "STORE" }); document.getElementById('progress-bar').style.width = Math.round(((i + 1) / totalFrames) * 100) + '%'; document.getElementById('progress-text').textContent = `${i + 1} / ${totalFrames} Frames`; } document.getElementById('progress-text').textContent = "ZIPを生成中..."; await new Promise(r => setTimeout(r, 100)); saveAs(await zip.generateAsync({type:"blob", compression: "STORE"}), "super_cg_sequence.zip"); document.getElementById('progress-modal').style.display = 'none'; document.getElementById('progress-bar').style.width = '0%'; }); });
 
+        // ★ 修正：アニメーション処理の最適化（省エネ化でiPhoneを休ませる）
         function animationLoop() {
-            if (isMoving) {
-                const now = Date.now();
-                const p = (now % 3000) / 3000;
-                workspace.style.setProperty('--anim-p', p);
-                workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(now / 150));
+            if (isMoving && !document.body.classList.contains('exporting')) {
+                // キャンバス上に「LIVEバッジ」か「フタ背景」が必要なスーパーがある時だけ再計算する
+                let needsAnimation = supers.some(s => s.showLive || s.isFuta);
+                if (needsAnimation) {
+                    const now = Date.now();
+                    const p = (now % 3000) / 3000;
+                    workspace.style.setProperty('--anim-p', p);
+                    workspace.style.setProperty('--live-a', 0.4 + 0.6 * Math.sin(now / 150));
+                }
             }
             requestAnimationFrame(animationLoop);
         }
